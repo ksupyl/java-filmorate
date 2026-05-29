@@ -18,10 +18,6 @@ public class InMemoryUserStorage implements UserStorage {
 
     @Override
     public User add(User user) {
-        // Если имя пустое — используем логин (бизнес-правило из прошлого спринта)
-        if (user.getName() == null || user.getName().isBlank()) {
-            user.setName(user.getLogin());
-        }
         user.setId(currentId++);
         users.put(user.getId(), user);
         log.debug("Добавлен пользователь: id={}, login={}", user.getId(), user.getLogin());
@@ -35,9 +31,6 @@ public class InMemoryUserStorage implements UserStorage {
             throw new NotFoundException("Пользователь с id=" + user.getId() + " не найден");
         }
 
-        if (user.getName() == null || user.getName().isBlank()) {
-            user.setName(user.getLogin());
-        }
         users.put(user.getId(), user);
         log.debug("Обновлён пользователь: id={}", user.getId());
         return user;
