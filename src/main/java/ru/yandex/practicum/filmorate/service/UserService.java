@@ -29,8 +29,8 @@ public class UserService {
         user.getFriends().add(friendId);
         friend.getFriends().add(userId);
 
-        userStorage.update(user);
-        userStorage.update(friend);
+        user.addFriend(friendId);
+        friend.addFriend(userId);
 
         log.debug("Пользователи id={} и id={} теперь друзья", userId, friendId);
         return user;
@@ -43,8 +43,8 @@ public class UserService {
         user.getFriends().remove(friendId);
         friend.getFriends().remove(userId);
 
-        userStorage.update(user);
-        userStorage.update(friend);
+        user.removeFriend(friendId);
+        friend.removeFriend(userId);
 
         log.debug("Пользователи id={} и id={} больше не друзья", userId, friendId);
         return user;
@@ -84,14 +84,23 @@ public class UserService {
         }
     }
 
+    private void applyDefaultName(User user) {
+        if (user.getName() == null || user.getName().isBlank()) {
+            user.setName(user.getLogin());
+            log.debug("Имя пользователя не задано — используется логин: '{}'", user.getLogin());
+        }
+    }
+
     // Делегирование базовых операций хранилищу
     public User add(User user) {
         validateLogin(user);
+        applyDefaultName(user);
         return userStorage.add(user);
     }
 
     public User update(User user) {
         validateLogin(user);
+        applyDefaultName(user);
         return userStorage.update(user);
     }
 
