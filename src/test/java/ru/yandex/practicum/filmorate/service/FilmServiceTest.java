@@ -17,13 +17,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class FilmServiceTest {
 
     private FilmService filmService;
-    private InMemoryUserStorage userStorage;
+    private UserService userService;
 
     @BeforeEach
     void setUp() {
-        InMemoryFilmStorage filmStorage = new InMemoryFilmStorage();
-        userStorage = new InMemoryUserStorage();
-        filmService = new FilmService(filmStorage, userStorage);
+        InMemoryUserStorage userStorage = new InMemoryUserStorage();
+        userService = new UserService(userStorage);
+        filmService = new FilmService(new InMemoryFilmStorage(), userStorage);
     }
 
     // Вспомогательные методы - отмена дублирования кода создания объектов в каждом тесте
@@ -42,7 +42,7 @@ class FilmServiceTest {
         user.setLogin(login);
         user.setName(login);
         user.setBirthday(LocalDate.of(1990, 1, 1));
-        return userStorage.add(user);
+        return userService.add(user);
     }
 
     @Test

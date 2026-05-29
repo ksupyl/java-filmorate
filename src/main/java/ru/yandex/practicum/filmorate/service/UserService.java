@@ -40,9 +40,6 @@ public class UserService {
         User user = userStorage.findById(userId);
         User friend = userStorage.findById(friendId);
 
-        user.getFriends().remove(friendId);
-        friend.getFriends().remove(userId);
-
         user.removeFriend(friendId);
         friend.removeFriend(userId);
 
