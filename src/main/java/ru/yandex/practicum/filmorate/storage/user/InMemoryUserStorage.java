@@ -3,6 +3,7 @@ package ru.yandex.practicum.filmorate.storage.user;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
+import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.User;
 
 import java.util.Collection;
@@ -18,6 +19,7 @@ public class InMemoryUserStorage implements UserStorage {
 
     @Override
     public User add(User user) {
+        validateLogin(user);
         // Если имя пустое — используем логин (бизнес-правило из прошлого спринта)
         if (user.getName() == null || user.getName().isBlank()) {
             user.setName(user.getLogin());
@@ -34,6 +36,7 @@ public class InMemoryUserStorage implements UserStorage {
             log.warn("Попытка обновить несуществующего пользователя: id={}", user.getId());
             throw new NotFoundException("Пользователь с id=" + user.getId() + " не найден");
         }
+        validateLogin(user);
         if (user.getName() == null || user.getName().isBlank()) {
             user.setName(user.getLogin());
         }
@@ -63,5 +66,13 @@ public class InMemoryUserStorage implements UserStorage {
             throw new NotFoundException("Пользователь с id=" + id + " не найден");
         }
         return user;
+    }
+
+    // Логин не может содержать пробелы
+    private void validateLogin(User user) {
+        if (user.getLogin().contains(" ")) {
+            log.warn("Некорректный логин: '{}'", user.getLogin());
+            throw new ValidationException("Логин не может содержать пробелы");
+        }
     }
 }

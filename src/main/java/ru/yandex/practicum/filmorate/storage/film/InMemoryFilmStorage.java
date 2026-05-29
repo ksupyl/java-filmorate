@@ -71,7 +71,7 @@ public class InMemoryFilmStorage implements FilmStorage {
         if (film.getReleaseDate().isBefore(CINEMA_BIRTHDAY)) {
             log.warn("Некорректная дата релиза: {}", film.getReleaseDate());
             throw new ValidationException(
-                    "Дата релиза не может быть раньше 28 декабря 1895 года"
+                    "Дата релиза фильма не может быть раньше 28 декабря 1895 года"
             );
         }
     }
