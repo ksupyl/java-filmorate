@@ -4,15 +4,20 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
+import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
+import java.time.LocalDate;
 import java.util.*;
 
 @Service
 @Slf4j
 public class FilmService {
+
+    // Константа: дата первого релиза (день рождения кино)
+    private static final LocalDate CINEMA_BIRTHDAY = LocalDate.of(1895, 12, 28);
 
     private final FilmStorage filmStorage;
     // Нужен для проверки существования пользователя, который ставит лайк
@@ -26,18 +31,18 @@ public class FilmService {
 
     public Film addLike(long filmId, long userId) {
         Film film = filmStorage.findById(filmId);
-        // Проверка существования пользователя — иначе 404
-        userStorage.findById(userId);
+        userStorage.findById(userId); // Проверка существования пользователя — иначе 404
 
         film.getLikes().add(userId);
+
+        filmStorage.update(film);
         log.debug("Пользователь id={} поставил лайк фильму id={}", userId, filmId);
         return film;
     }
 
     public Film removeLike(long filmId, long userId) {
         Film film = filmStorage.findById(filmId);
-        // Проверка существования пользователя — иначе 404
-        userStorage.findById(userId);
+        userStorage.findById(userId); // Проверка существования пользователя — иначе 404
 
         if (!film.getLikes().contains(userId)) {
             throw new NotFoundException(
@@ -46,6 +51,7 @@ public class FilmService {
         }
 
         film.getLikes().remove(userId);
+        filmStorage.update(film);
         log.debug("Пользователь id={} убрал лайк с фильма id={}", userId, filmId);
         return film;
     }
@@ -66,12 +72,24 @@ public class FilmService {
         return allFilms.subList(0, resultSize);
     }
 
+    // Валидация даты релиза — не может быть раньше дня рождения кино
+    private void validateReleaseDate(Film film) {
+        if (film.getReleaseDate().isBefore(CINEMA_BIRTHDAY)) {
+            log.warn("Некорректная дата релиза: {}", film.getReleaseDate());
+            throw new ValidationException(
+                    "Дата релиза фильма не может быть раньше 28 декабря 1895 года"
+            );
+        }
+    }
+
     // Делегирование базовых операций хранилищу
     public Film add(Film film) {
+        validateReleaseDate(film);
         return filmStorage.add(film);
     }
 
     public Film update(Film film) {
+        validateReleaseDate(film);
         return filmStorage.update(film);
     }
 
