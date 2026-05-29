@@ -31,4 +31,12 @@ public class Film {
     private Integer duration;
 
     private Set<Long> likes = new HashSet<>();
+
+    public void addLike(Long userId) {
+        likes.add(userId);
+    }
+
+    public boolean removeLike(Long userId) {
+        return likes.remove(userId);
+    }
 }

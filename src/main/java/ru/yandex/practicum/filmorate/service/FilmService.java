@@ -37,7 +37,7 @@ public class FilmService {
         Film film = filmStorage.findById(filmId);
         userStorage.findById(userId); // Проверка существования пользователя — иначе 404
 
-        film.getLikes().add(userId);
+        film.addLike(userId);
 
         filmStorage.update(film);
         log.debug("Пользователь id={} поставил лайк фильму id={}", userId, filmId);
@@ -48,13 +48,12 @@ public class FilmService {
         Film film = filmStorage.findById(filmId);
         userStorage.findById(userId); // Проверка существования пользователя — иначе 404
 
-        if (!film.getLikes().contains(userId)) {
+        if (!film.removeLike(userId)) {
             throw new NotFoundException(
                     "Пользователь id=" + userId + " не ставил лайк фильму id=" + filmId
             );
         }
 
-        film.getLikes().remove(userId);
         filmStorage.update(film);
         log.debug("Пользователь id={} убрал лайк с фильма id={}", userId, filmId);
         return film;
