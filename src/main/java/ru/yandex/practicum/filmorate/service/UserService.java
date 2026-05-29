@@ -3,6 +3,7 @@ package ru.yandex.practicum.filmorate.service;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.User;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
@@ -28,6 +29,9 @@ public class UserService {
         user.getFriends().add(friendId);
         friend.getFriends().add(userId);
 
+        userStorage.update(user);
+        userStorage.update(friend);
+
         log.debug("Пользователи id={} и id={} теперь друзья", userId, friendId);
         return user;
     }
@@ -38,6 +42,9 @@ public class UserService {
 
         user.getFriends().remove(friendId);
         friend.getFriends().remove(userId);
+
+        userStorage.update(user);
+        userStorage.update(friend);
 
         log.debug("Пользователи id={} и id={} больше не друзья", userId, friendId);
         return user;
@@ -69,12 +76,22 @@ public class UserService {
         return common;
     }
 
+    // Логин не может содержать пробелы
+    private void validateLogin(User user) {
+        if (user.getLogin().contains(" ")) {
+            log.warn("Некорректный логин: '{}'", user.getLogin());
+            throw new ValidationException("Логин не может содержать пробелы");
+        }
+    }
+
     // Делегирование базовых операций хранилищу
     public User add(User user) {
+        validateLogin(user);
         return userStorage.add(user);
     }
 
     public User update(User user) {
+        validateLogin(user);
         return userStorage.update(user);
     }
 
