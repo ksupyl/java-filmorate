@@ -120,4 +120,10 @@ class FilmServiceTest {
         Collection<Film> popular = filmService.getPopular(2);
         assertEquals(2, popular.size());
     }
+
+    @Test
+    void shouldThrowWhenCountIsZeroOrNegative() {
+        assertThrows(ValidationException.class, () -> filmService.getPopular(0));
+        assertThrows(ValidationException.class, () -> filmService.getPopular(-1));
+    }
 }
