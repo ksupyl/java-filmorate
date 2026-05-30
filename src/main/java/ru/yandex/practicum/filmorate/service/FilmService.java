@@ -67,19 +67,7 @@ public class FilmService {
             );
         }
 
-        List<Film> allFilms = new ArrayList<>(filmStorage.findAll());
-
-        // Сортировка по убыванию количества лайков
-        Collections.sort(allFilms, new Comparator<Film>() {
-            @Override
-            public int compare(Film f1, Film f2) {
-                return f2.getLikes().size() - f1.getLikes().size();
-            }
-        });
-
-        // Возвращение не больше count фильмов
-        int resultSize = Math.min(count, allFilms.size());
-        return allFilms.subList(0, resultSize);
+        return filmStorage.findPopular(count);
     }
 
     // Валидация даты релиза — не может быть раньше дня рождения кино
