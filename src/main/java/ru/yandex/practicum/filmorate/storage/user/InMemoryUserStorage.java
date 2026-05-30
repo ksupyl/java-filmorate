@@ -42,6 +42,7 @@ public class InMemoryUserStorage implements UserStorage {
         log.debug("Удалён пользователь: id={}", id);
         return user;
     }
+
     @Override
     public Collection<User> findAll() {
         return users.values();
