@@ -60,6 +60,13 @@ public class FilmService {
     }
 
     public Collection<Film> getPopular(int count) {
+        // count должен быть положительным числом
+        if (count <= 0) {
+            throw new ValidationException(
+                    "Количество фильмов должно быть положительным числом, получено: " + count
+            );
+        }
+
         List<Film> allFilms = new ArrayList<>(filmStorage.findAll());
 
         // Сортировка по убыванию количества лайков
