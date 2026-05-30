@@ -8,6 +8,7 @@ import ru.yandex.practicum.filmorate.model.User;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @Component
 @Slf4j
@@ -26,10 +27,6 @@ public class InMemoryUserStorage implements UserStorage {
 
     @Override
     public User update(User user) {
-        if (!users.containsKey(user.getId())) {
-            log.warn("Попытка обновить несуществующего пользователя: id={}", user.getId());
-            throw new NotFoundException("Пользователь с id=" + user.getId() + " не найден");
-        }
 
         users.put(user.getId(), user);
         log.debug("Обновлён пользователь: id={}", user.getId());
@@ -50,12 +47,7 @@ public class InMemoryUserStorage implements UserStorage {
     }
 
     @Override
-    public User findById(long id) {
-        User user = users.get(id);
-        if (user == null) {
-            log.warn("Пользователь не найден: id={}", id);
-            throw new NotFoundException("Пользователь с id=" + id + " не найден");
-        }
-        return user;
+    public Optional<User> findById(long id) {
+        return Optional.ofNullable(users.get(id));
     }
 }

@@ -10,11 +10,7 @@ import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
 
 @Service
 @Slf4j
@@ -33,20 +29,31 @@ public class FilmService {
         this.userStorage = userStorage;
     }
 
+    // Получение фильма по id с проверкой существования
+    private Film getFilmOrThrow(long id) {
+        return filmStorage.findById(id)
+                .orElseThrow(() -> new NotFoundException("Фильм с id=" + id + " не найден"));
+    }
+
+    // Получение пользователя по id с проверкой существования
+    private void getUserOrThrow(long id) {
+        userStorage.findById(id)
+                .orElseThrow(() -> new NotFoundException("Пользователь с id=" + id + " не найден"));
+    }
+
     public Film addLike(long filmId, long userId) {
-        Film film = filmStorage.findById(filmId);
-        userStorage.findById(userId); // Проверка существования пользователя — иначе 404
+        Film film = getFilmOrThrow(filmId);
+        getUserOrThrow(userId); // проверка существования пользователя — иначе 404
 
         film.addLike(userId);
-
         filmStorage.update(film);
         log.debug("Пользователь id={} поставил лайк фильму id={}", userId, filmId);
         return film;
     }
 
     public Film removeLike(long filmId, long userId) {
-        Film film = filmStorage.findById(filmId);
-        userStorage.findById(userId); // Проверка существования пользователя — иначе 404
+        Film film = getFilmOrThrow(filmId);
+        getUserOrThrow(userId); // проверка существования пользователя — иначе 404
 
         if (!film.removeLike(userId)) {
             throw new NotFoundException(
@@ -60,13 +67,12 @@ public class FilmService {
     }
 
     public Collection<Film> getPopular(int count) {
-        // count должен быть положительным числом
+        // Валидация: count должен быть положительным числом
         if (count <= 0) {
             throw new ValidationException(
                     "Количество фильмов должно быть положительным числом, получено: " + count
             );
         }
-
         return filmStorage.findPopular(count);
     }
 
@@ -80,13 +86,13 @@ public class FilmService {
         }
     }
 
-    // Делегирование базовых операций хранилищу
     public Film add(Film film) {
         validateReleaseDate(film);
         return filmStorage.add(film);
     }
 
     public Film update(Film film) {
+        getFilmOrThrow(film.getId()); // проверка существования — иначе 404
         validateReleaseDate(film);
         return filmStorage.update(film);
     }
@@ -96,6 +102,6 @@ public class FilmService {
     }
 
     public Film findById(long id) {
-        return filmStorage.findById(id);
+        return getFilmOrThrow(id);
     }
 }

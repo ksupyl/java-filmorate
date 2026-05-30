@@ -3,6 +3,7 @@ package ru.yandex.practicum.filmorate.service;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.User;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
@@ -22,11 +23,25 @@ public class UserService {
         this.userStorage = userStorage;
     }
 
+    private void validateDifferentUsers(long userId, long otherId) {
+        if (userId == otherId) {
+            throw new ValidationException(
+                    "Идентификаторы пользователей должны различаться, получено: id=" + userId
+            );
+        }
+    }
+
+    // Получение пользователя по id с проверкой существования
+    private User getUserOrThrow(long id) {
+        return userStorage.findById(id)
+                .orElseThrow(() -> new NotFoundException("Пользователь с id=" + id + " не найден"));
+    }
+
     public User addFriend(long userId, long friendId) {
         validateDifferentUsers(userId, friendId);
 
-        User user = userStorage.findById(userId);
-        User friend = userStorage.findById(friendId);
+        User user = getUserOrThrow(userId);
+        User friend = getUserOrThrow(friendId);
 
         user.addFriend(friendId);
         friend.addFriend(userId);
@@ -38,8 +53,8 @@ public class UserService {
     public User removeFriend(long userId, long friendId) {
         validateDifferentUsers(userId, friendId);
 
-        User user = userStorage.findById(userId);
-        User friend = userStorage.findById(friendId);
+        User user = getUserOrThrow(userId);
+        User friend = getUserOrThrow(friendId);
 
         user.removeFriend(friendId);
         friend.removeFriend(userId);
@@ -49,11 +64,11 @@ public class UserService {
     }
 
     public Collection<User> getFriends(long userId) {
-        User user = userStorage.findById(userId);
+        User user = getUserOrThrow(userId);
         List<User> friends = new ArrayList<>();
 
         for (Long friendId : user.getFriends()) {
-            friends.add(userStorage.findById(friendId));
+            friends.add(getUserOrThrow(friendId));
         }
 
         return friends;
@@ -62,14 +77,13 @@ public class UserService {
     public Collection<User> getCommonFriends(long userId, long otherId) {
         validateDifferentUsers(userId, otherId);
 
-        User user = userStorage.findById(userId);
-        User other = userStorage.findById(otherId);
+        User user = getUserOrThrow(userId);
+        User other = getUserOrThrow(otherId);
         List<User> common = new ArrayList<>();
 
         for (Long friendId : user.getFriends()) {
-            // Если этот друг есть и у другого пользователя = общий
             if (other.getFriends().contains(friendId)) {
-                common.add(userStorage.findById(friendId));
+                common.add(getUserOrThrow(friendId));
             }
         }
 
@@ -91,14 +105,6 @@ public class UserService {
         }
     }
 
-    private void validateDifferentUsers(long userId, long otherId) {
-        if (userId == otherId) {
-            throw new ValidationException(
-                    "Идентификаторы пользователей должны различаться, получено: id=" + userId
-            );
-        }
-    }
-
     // Делегирование базовых операций хранилищу
     public User add(User user) {
         validateLogin(user);
@@ -107,6 +113,8 @@ public class UserService {
     }
 
     public User update(User user) {
+        getUserOrThrow(user.getId());
+
         validateLogin(user);
         applyDefaultName(user);
         return userStorage.update(user);
@@ -117,6 +125,6 @@ public class UserService {
     }
 
     public User findById(long id) {
-        return userStorage.findById(id);
+        return getUserOrThrow(id);
     }
 }

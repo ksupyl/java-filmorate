@@ -4,6 +4,7 @@ import ru.yandex.practicum.filmorate.model.Film;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface FilmStorage {
 
@@ -15,7 +16,7 @@ public interface FilmStorage {
 
     Collection<Film> findAll();
 
-    Film findById(long id);
+    Optional<Film> findById(long id);
 
     List<Film> findPopular(int count);
 }
