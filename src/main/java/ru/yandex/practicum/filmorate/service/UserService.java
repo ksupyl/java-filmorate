@@ -23,11 +23,10 @@ public class UserService {
     }
 
     public User addFriend(long userId, long friendId) {
+        validateDifferentUsers(userId, friendId);
+
         User user = userStorage.findById(userId);
         User friend = userStorage.findById(friendId);
-
-        user.getFriends().add(friendId);
-        friend.getFriends().add(userId);
 
         user.addFriend(friendId);
         friend.addFriend(userId);
@@ -37,6 +36,8 @@ public class UserService {
     }
 
     public User removeFriend(long userId, long friendId) {
+        validateDifferentUsers(userId, friendId);
+
         User user = userStorage.findById(userId);
         User friend = userStorage.findById(friendId);
 
@@ -59,6 +60,8 @@ public class UserService {
     }
 
     public Collection<User> getCommonFriends(long userId, long otherId) {
+        validateDifferentUsers(userId, otherId);
+
         User user = userStorage.findById(userId);
         User other = userStorage.findById(otherId);
         List<User> common = new ArrayList<>();
@@ -85,6 +88,14 @@ public class UserService {
         if (user.getName() == null || user.getName().isBlank()) {
             user.setName(user.getLogin());
             log.debug("Имя пользователя не задано — используется логин: '{}'", user.getLogin());
+        }
+    }
+
+    private void validateDifferentUsers(long userId, long otherId) {
+        if (userId == otherId) {
+            throw new ValidationException(
+                    "Идентификаторы пользователей должны различаться, получено: id=" + userId
+            );
         }
     }
 
