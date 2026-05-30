@@ -103,4 +103,25 @@ class UserServiceTest {
 
         assertTrue(commonFriends.isEmpty());
     }
+
+    @Test
+    void shouldThrowWhenAddFriendToYourself() {
+        User user = createUser("user1");
+        assertThrows(ValidationException.class,
+                () -> userService.addFriend(user.getId(), user.getId()));
+    }
+
+    @Test
+    void shouldThrowWhenRemoveFriendYourself() {
+        User user = createUser("user1");
+        assertThrows(ValidationException.class,
+                () -> userService.removeFriend(user.getId(), user.getId()));
+    }
+
+    @Test
+    void shouldThrowWhenGetCommonFriendsWithYourself() {
+        User user = createUser("user1");
+        assertThrows(ValidationException.class,
+                () -> userService.getCommonFriends(user.getId(), user.getId()));
+    }
 }
