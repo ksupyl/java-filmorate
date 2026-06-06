@@ -2,76 +2,72 @@ package ru.yandex.practicum.filmorate.controller;
 
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.User;
+import ru.yandex.practicum.filmorate.service.UserService;
 
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/users")
 @Slf4j
 public class UserController {
 
-    // Хранилище пользователей в памяти
-    private final Map<Long, User> users = new HashMap<>();
+    private final UserService userService;
 
-    private long currentId = 1;
+    @Autowired
+    public UserController(UserService userService) {
+        this.userService = userService;
+    }
 
     @GetMapping
     public Collection<User> findAll() {
-        log.info("Получен запрос на получение списка всех пользователей");
-        return users.values();
+        log.info("GET /users");
+        return userService.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public User findById(@PathVariable long id) {
+        log.info("GET /users/{}", id);
+        return userService.findById(id);
     }
 
     @PostMapping
     public User create(@Valid @RequestBody User user) {
-        log.info("Получен запрос на создание пользователя: {}", user.getLogin());
-
-        validateUser(user);
-
-        user.setId(getNextId());
-        users.put(user.getId(), user);
-
-        log.info("Пользователь успешно добавлен. Присвоен ID: {}", user.getId());
-        return user;
+        log.info("POST /users : {}", user.getLogin());
+        return userService.add(user);
     }
 
     @PutMapping
     public User update(@Valid @RequestBody User user) {
-        log.info("Получен запрос на обновление пользователя с ID: {}", user.getId());
-
-        if (user.getId() == null || !users.containsKey(user.getId())) {
-            log.error("Ошибка обновления: пользователь с ID {} не найден", user.getId());
-            throw new ValidationException("Пользователь с таким ID не найден");
-        }
-
-        validateUser(user);
-
-        users.put(user.getId(), user);
-        log.info("Пользователь с ID {} успешно обновлен", user.getId());
-        return user;
+        log.info("PUT /users : id={}", user.getId());
+        return userService.update(user);
     }
 
-    // Вспомогательный метод для валидации и бизнес-логики
-    private void validateUser(User user) {
-        // Проверка на пробелы в логине
-        if (user.getLogin().contains(" ")) {
-            log.error("Ошибка валидации: логин '{}' содержит пробелы", user.getLogin());
-            throw new ValidationException("Логин не может содержать пробелы");
-        }
-
-        // Если имя пустое = использование логина
-        if (user.getName() == null || user.getName().isBlank()) {
-            log.info("Имя пользователя не указано. Используем логин: {}", user.getLogin());
-            user.setName(user.getLogin());
-        }
+    @PutMapping("/{id}/friends/{friendId}")
+    public User addFriend(@PathVariable long id, @PathVariable long friendId) {
+        log.info("PUT /users/{}/friends/{}", id, friendId);
+        return userService.addFriend(id, friendId);
     }
 
-    // Вспомогательный метод для генерации ID
-    private long getNextId() {
-        return currentId++;
+    @DeleteMapping("/{id}/friends/{friendId}")
+    public User removeFriend(@PathVariable long id, @PathVariable long friendId) {
+        log.info("DELETE /users/{}/friends/{}", id, friendId);
+        return userService.removeFriend(id, friendId);
+    }
+
+    @GetMapping("/{id}/friends")
+    public Collection<User> getFriends(@PathVariable long id) {
+        log.info("GET /users/{}/friends", id);
+        return userService.getFriends(id);
+    }
+
+    @GetMapping("/{id}/friends/common/{otherId}")
+    public Collection<User> getCommonFriends(
+            @PathVariable long id,
+            @PathVariable long otherId) {
+        log.info("GET /users/{}/friends/common/{}", id, otherId);
+        return userService.getCommonFriends(id, otherId);
     }
 }
