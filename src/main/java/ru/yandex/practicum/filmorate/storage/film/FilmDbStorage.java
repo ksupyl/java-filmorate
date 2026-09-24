@@ -7,7 +7,9 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.model.Film;
+import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.storage.mapper.FilmRowMapper;
+import ru.yandex.practicum.filmorate.storage.mapper.GenreRowMapper;
 
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -15,6 +17,10 @@ import java.sql.Statement;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
 
 @Repository
 public class FilmDbStorage implements FilmStorage {
@@ -36,14 +42,30 @@ public class FilmDbStorage implements FilmStorage {
     private static final String UPDATE_QUERY =
             "UPDATE films SET name = ?, description = ?, release_date = ?, duration = ?, mpa_id = ? WHERE id = ?";
     private static final String DELETE_QUERY = "DELETE FROM films WHERE id = ?";
+    private static final String DELETE_FILM_GENRES_QUERY = "DELETE FROM film_genres WHERE film_id = ?";
+    private static final String INSERT_FILM_GENRE_QUERY =
+            "INSERT INTO film_genres (film_id, genre_id) VALUES (?, ?)";
+    // Жанры одного фильма — по порядку id
+    private static final String FIND_GENRES_BY_FILM_QUERY =
+            "SELECT g.id, g.name FROM film_genres fg "
+                    + "JOIN genres g ON fg.genre_id = g.id "
+                    + "WHERE fg.film_id = ? "
+                    + "ORDER BY g.id";
+    // Жанры всех фильмов одним запросом, а не отдельным запросом на каждый фильм
+    private static final String FIND_ALL_FILM_GENRES_QUERY =
+            "SELECT fg.film_id, g.id, g.name FROM film_genres fg "
+                    + "JOIN genres g ON fg.genre_id = g.id "
+                    + "ORDER BY fg.film_id, g.id";
 
     private final JdbcTemplate jdbc;
     private final FilmRowMapper mapper;
+    private final GenreRowMapper genreMapper;
 
     @Autowired
-    public FilmDbStorage(JdbcTemplate jdbc, FilmRowMapper mapper) {
+    public FilmDbStorage(JdbcTemplate jdbc, FilmRowMapper mapper, GenreRowMapper genreMapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.genreMapper = genreMapper;
     }
 
     @Override
@@ -60,7 +82,8 @@ public class FilmDbStorage implements FilmStorage {
         }, keyHolder);
 
         Long id = keyHolder.getKeyAs(Long.class);
-        // Перечитываем из базы: так в ответе будет название рейтинга, а не только его id
+        saveGenres(id, film.getGenres());
+        // Перечитываем из базы: так в ответе будут названия рейтинга и жанров, а не только их id
         return findById(id).orElseThrow();
     }
 
@@ -68,6 +91,7 @@ public class FilmDbStorage implements FilmStorage {
     public Film update(Film film) {
         jdbc.update(UPDATE_QUERY, film.getName(), film.getDescription(), Date.valueOf(film.getReleaseDate()),
                 film.getDuration(), getMpaId(film), film.getId());
+        saveGenres(film.getId(), film.getGenres());
         return findById(film.getId()).orElseThrow();
     }
 
@@ -81,21 +105,59 @@ public class FilmDbStorage implements FilmStorage {
 
     @Override
     public Collection<Film> findAll() {
-        return jdbc.query(FIND_ALL_QUERY, mapper);
+        List<Film> films = jdbc.query(FIND_ALL_QUERY, mapper);
+        loadGenresForFilms(films);
+        return films;
     }
 
     @Override
     public Optional<Film> findById(long id) {
-        return jdbc.query(FIND_BY_ID_QUERY, mapper, id).stream().findFirst();
+        Optional<Film> film = jdbc.query(FIND_BY_ID_QUERY, mapper, id).stream().findFirst();
+        film.ifPresent(this::loadGenres);
+        return film;
     }
 
     @Override
     public List<Film> findPopular(int count) {
-        return jdbc.query(FIND_POPULAR_QUERY, mapper, count);
+        List<Film> films = jdbc.query(FIND_POPULAR_QUERY, mapper, count);
+        loadGenresForFilms(films);
+        return films;
     }
 
     // Рейтинга может не быть — тогда в колонку mpa_id уходит NULL
     private Integer getMpaId(Film film) {
         return film.getMpa() == null ? null : film.getMpa().getId();
+    }
+
+    // Заменяет жанры фильма: старые связи удаляются, новые вставляются одним пакетом
+    private void saveGenres(long filmId, Set<Genre> genres) {
+        jdbc.update(DELETE_FILM_GENRES_QUERY, filmId);
+        if (genres == null || genres.isEmpty()) {
+            return;
+        }
+        List<Object[]> rows = new ArrayList<>();
+        for (Genre genre : genres) {
+            rows.add(new Object[]{filmId, genre.getId()});
+        }
+        jdbc.batchUpdate(INSERT_FILM_GENRE_QUERY, rows);
+    }
+
+    // Жанры одного фильма
+    private void loadGenres(Film film) {
+        film.getGenres().addAll(jdbc.query(FIND_GENRES_BY_FILM_QUERY, genreMapper, film.getId()));
+    }
+
+    // Жанры списка фильмов: один запрос на всех, раскладываем по фильмам через Map
+    private void loadGenresForFilms(List<Film> films) {
+        Map<Long, Film> filmsById = new HashMap<>();
+        for (Film film : films) {
+            filmsById.put(film.getId(), film);
+        }
+        jdbc.query(FIND_ALL_FILM_GENRES_QUERY, rs -> {
+            Film film = filmsById.get(rs.getLong("film_id"));
+            if (film != null) {
+                film.getGenres().add(genreMapper.mapRow(rs, rs.getRow()));
+            }
+        });
     }
 }
