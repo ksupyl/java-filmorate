@@ -56,6 +56,10 @@ public class FilmDbStorage implements FilmStorage {
             "SELECT fg.film_id, g.id, g.name FROM film_genres fg "
                     + "JOIN genres g ON fg.genre_id = g.id "
                     + "ORDER BY fg.film_id, g.id";
+    private static final String ADD_LIKE_QUERY =
+            "MERGE INTO film_likes (film_id, user_id) KEY (film_id, user_id) VALUES (?, ?)";
+    private static final String REMOVE_LIKE_QUERY =
+            "DELETE FROM film_likes WHERE film_id = ? AND user_id = ?";
 
     private final JdbcTemplate jdbc;
     private final FilmRowMapper mapper;
@@ -122,6 +126,17 @@ public class FilmDbStorage implements FilmStorage {
         List<Film> films = jdbc.query(FIND_POPULAR_QUERY, mapper, count);
         loadGenresForFilms(films);
         return films;
+    }
+
+    @Override
+    public void addLike(long filmId, long userId) {
+        jdbc.update(ADD_LIKE_QUERY, filmId, userId);
+    }
+
+    @Override
+    public boolean removeLike(long filmId, long userId) {
+        // update возвращает число удалённых строк: 0 — лайка не было
+        return jdbc.update(REMOVE_LIKE_QUERY, filmId, userId) > 0;
     }
 
     // Рейтинга может не быть — тогда в колонку mpa_id уходит NULL

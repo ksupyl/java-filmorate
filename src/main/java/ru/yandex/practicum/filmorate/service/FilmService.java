@@ -47,8 +47,7 @@ public class FilmService {
         Film film = getFilmOrThrow(filmId);
         getUserOrThrow(userId); // проверка существования пользователя — иначе 404
 
-        film.addLike(userId);
-        filmStorage.update(film);
+        filmStorage.addLike(filmId, userId);
         log.debug("Пользователь id={} поставил лайк фильму id={}", userId, filmId);
         return film;
     }
@@ -57,13 +56,12 @@ public class FilmService {
         Film film = getFilmOrThrow(filmId);
         getUserOrThrow(userId); // проверка существования пользователя — иначе 404
 
-        if (!film.removeLike(userId)) {
+        if (!filmStorage.removeLike(filmId, userId)) {
             throw new NotFoundException(
                     "Пользователь id=" + userId + " не ставил лайк фильму id=" + filmId
             );
         }
 
-        filmStorage.update(film);
         log.debug("Пользователь id={} убрал лайк с фильма id={}", userId, filmId);
         return film;
     }
