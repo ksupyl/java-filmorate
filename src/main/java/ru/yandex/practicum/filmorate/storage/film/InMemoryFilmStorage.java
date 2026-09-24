@@ -63,4 +63,15 @@ public class InMemoryFilmStorage implements FilmStorage {
                 .limit(count)
                 .toList();
     }
+
+    // Существование фильма и пользователя проверяет сервис до вызова этих методов
+    @Override
+    public void addLike(long filmId, long userId) {
+        films.get(filmId).addLike(userId);
+    }
+
+    @Override
+    public boolean removeLike(long filmId, long userId) {
+        return films.get(filmId).removeLike(userId);
+    }
 }

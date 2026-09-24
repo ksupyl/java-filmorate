@@ -2,15 +2,19 @@ package ru.yandex.practicum.filmorate.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Film;
+import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 @Service
 @Slf4j
@@ -23,10 +27,19 @@ public class FilmService {
     // Нужен для проверки существования пользователя, который ставит лайк
     private final UserStorage userStorage;
 
+    // Нужны для проверки рейтинга и жанра из запроса
+    private final MpaService mpaService;
+    private final GenreService genreService;
+
     @Autowired
-    public FilmService(FilmStorage filmStorage, UserStorage userStorage) {
+    public FilmService(@Qualifier("filmDbStorage") FilmStorage filmStorage,
+                       @Qualifier("userDbStorage") UserStorage userStorage,
+                       MpaService mpaService,
+                       GenreService genreService) {
         this.filmStorage = filmStorage;
         this.userStorage = userStorage;
+        this.mpaService = mpaService;
+        this.genreService = genreService;
     }
 
     // Получение фильма по id с проверкой существования
@@ -45,8 +58,7 @@ public class FilmService {
         Film film = getFilmOrThrow(filmId);
         getUserOrThrow(userId); // проверка существования пользователя — иначе 404
 
-        film.addLike(userId);
-        filmStorage.update(film);
+        filmStorage.addLike(filmId, userId);
         log.debug("Пользователь id={} поставил лайк фильму id={}", userId, filmId);
         return film;
     }
@@ -55,13 +67,12 @@ public class FilmService {
         Film film = getFilmOrThrow(filmId);
         getUserOrThrow(userId); // проверка существования пользователя — иначе 404
 
-        if (!film.removeLike(userId)) {
+        if (!filmStorage.removeLike(filmId, userId)) {
             throw new NotFoundException(
                     "Пользователь id=" + userId + " не ставил лайк фильму id=" + filmId
             );
         }
 
-        filmStorage.update(film);
         log.debug("Пользователь id={} убрал лайк с фильма id={}", userId, filmId);
         return film;
     }
@@ -86,14 +97,36 @@ public class FilmService {
         }
     }
 
+    // Рейтинг и жанры из запроса должны существовать в справочниках — иначе 404
+    private void validateMpaAndGenres(Film film) {
+        if (film.getMpa() != null) {
+            mpaService.findById(film.getMpa().getId()); // бросит NotFoundException
+        }
+        if (film.getGenres() == null || film.getGenres().isEmpty()) {
+            return;
+        }
+        // Один запрос за всеми жанрами вместо запроса на каждый
+        Set<Integer> knownIds = new HashSet<>();
+        for (Genre genre : genreService.findAll()) {
+            knownIds.add(genre.getId());
+        }
+        for (Genre genre : film.getGenres()) {
+            if (!knownIds.contains(genre.getId())) {
+                throw new NotFoundException("Жанр с id=" + genre.getId() + " не найден");
+            }
+        }
+    }
+
     public Film add(Film film) {
         validateReleaseDate(film);
+        validateMpaAndGenres(film);
         return filmStorage.add(film);
     }
 
     public Film update(Film film) {
         getFilmOrThrow(film.getId()); // проверка существования — иначе 404
         validateReleaseDate(film);
+        validateMpaAndGenres(film);
         return filmStorage.update(film);
     }
 

@@ -5,12 +5,15 @@ import org.junit.jupiter.api.Test;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.service.FilmService;
+import ru.yandex.practicum.filmorate.service.GenreService;
+import ru.yandex.practicum.filmorate.service.MpaService;
 import ru.yandex.practicum.filmorate.storage.film.InMemoryFilmStorage;
 import ru.yandex.practicum.filmorate.storage.user.InMemoryUserStorage;
 
 import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 class FilmControllerTest {
     private FilmController filmController;
@@ -20,7 +23,8 @@ class FilmControllerTest {
         // Перед каждым тестом создаётся новая цепочка зависимостей
         InMemoryFilmStorage filmStorage = new InMemoryFilmStorage();
         InMemoryUserStorage userStorage = new InMemoryUserStorage();
-        FilmService filmService = new FilmService(filmStorage, userStorage);
+        FilmService filmService = new FilmService(filmStorage, userStorage,
+                mock(MpaService.class), mock(GenreService.class));
         filmController = new FilmController(filmService);
     }
 
@@ -48,9 +52,7 @@ class FilmControllerTest {
         film.setDuration(100);
 
         // Проверка, что при попытке создать такой фильм выбросится ValidationException
-        ValidationException exception = assertThrows(ValidationException.class, () -> {
-            filmController.create(film);
-        });
+        ValidationException exception = assertThrows(ValidationException.class, () -> filmController.create(film));
 
         assertEquals("Дата релиза фильма не может быть раньше 28 декабря 1895 года", exception.getMessage());
     }

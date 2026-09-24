@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 class FilmServiceTest {
 
@@ -23,7 +24,8 @@ class FilmServiceTest {
     void setUp() {
         InMemoryUserStorage userStorage = new InMemoryUserStorage();
         userService = new UserService(userStorage);
-        filmService = new FilmService(new InMemoryFilmStorage(), userStorage);
+        filmService = new FilmService(new InMemoryFilmStorage(), userStorage,
+                mock(MpaService.class), mock(GenreService.class));
     }
 
     // Вспомогательные методы - отмена дублирования кода создания объектов в каждом тесте
