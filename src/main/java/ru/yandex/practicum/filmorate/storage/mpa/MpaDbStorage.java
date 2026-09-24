@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public class MpaDbStorage {
+public class MpaDbStorage implements MpaStorage {
     private static final String FIND_ALL_QUERY = "SELECT id, name FROM mpa ORDER BY id";
     private static final String FIND_BY_ID_QUERY = "SELECT id, name FROM mpa WHERE id = ?";
 
@@ -23,10 +23,12 @@ public class MpaDbStorage {
         this.mapper = mapper;
     }
 
+    @Override
     public List<Mpa> findAll() {
         return jdbc.query(FIND_ALL_QUERY, mapper);
     }
 
+    @Override
     public Optional<Mpa> findById(int id) {
         return jdbc.query(FIND_BY_ID_QUERY, mapper, id).stream().findFirst();
     }
