@@ -15,6 +15,7 @@ import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.ArrayList;
@@ -51,10 +52,11 @@ public class FilmDbStorage implements FilmStorage {
                     + "JOIN genres g ON fg.genre_id = g.id "
                     + "WHERE fg.film_id = ? "
                     + "ORDER BY g.id";
-    // Жанры всех фильмов одним запросом, а не отдельным запросом на каждый фильм
-    private static final String FIND_ALL_FILM_GENRES_QUERY =
+    // Жанры нескольких фильмов одним запросом; вместо %s подставляется «?, ?, ?» по числу фильмов
+    private static final String FIND_GENRES_BY_FILMS_QUERY =
             "SELECT fg.film_id, g.id, g.name FROM film_genres fg "
                     + "JOIN genres g ON fg.genre_id = g.id "
+                    + "WHERE fg.film_id IN (%s) "
                     + "ORDER BY fg.film_id, g.id";
     private static final String ADD_LIKE_QUERY =
             "MERGE INTO film_likes (film_id, user_id) KEY (film_id, user_id) VALUES (?, ?)";
@@ -162,17 +164,19 @@ public class FilmDbStorage implements FilmStorage {
         film.getGenres().addAll(jdbc.query(FIND_GENRES_BY_FILM_QUERY, genreMapper, film.getId()));
     }
 
-    // Жанры списка фильмов: один запрос на всех, раскладываем по фильмам через Map
+    // Жанры списка фильмов: один запрос только по этим фильмам, раскладываем через Map
     private void loadGenresForFilms(List<Film> films) {
+        if (films.isEmpty()) {
+            return; // фильмов нет — запрос не нужен
+        }
         Map<Long, Film> filmsById = new HashMap<>();
         for (Film film : films) {
             filmsById.put(film.getId(), film);
         }
-        jdbc.query(FIND_ALL_FILM_GENRES_QUERY, rs -> {
+        String placeholders = String.join(", ", Collections.nCopies(filmsById.size(), "?"));
+        jdbc.query(String.format(FIND_GENRES_BY_FILMS_QUERY, placeholders), rs -> {
             Film film = filmsById.get(rs.getLong("film_id"));
-            if (film != null) {
-                film.getGenres().add(genreMapper.mapRow(rs, rs.getRow()));
-            }
-        });
+            film.getGenres().add(genreMapper.mapRow(rs, rs.getRow()));
+        }, filmsById.keySet().toArray());
     }
 }
