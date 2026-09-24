@@ -28,6 +28,19 @@ public class UserDbStorage implements UserStorage {
             "SELECT id, email, login, name, birthday FROM users ORDER BY id";
     private static final String FIND_BY_ID_QUERY =
             "SELECT id, email, login, name, birthday FROM users WHERE id = ?";
+    private static final String ADD_FRIEND_QUERY =
+            "MERGE INTO friendship (user_id, friend_id) KEY (user_id, friend_id) VALUES (?, ?)";
+    private static final String REMOVE_FRIEND_QUERY =
+            "DELETE FROM friendship WHERE user_id = ? AND friend_id = ?";
+    private static final String FIND_FRIENDS_QUERY =
+            "SELECT u.id, u.email, u.login, u.name, u.birthday FROM users u "
+                    + "JOIN friendship f ON u.id = f.friend_id "
+                    + "WHERE f.user_id = ? ORDER BY u.id";
+    private static final String FIND_COMMON_FRIENDS_QUERY =
+            "SELECT u.id, u.email, u.login, u.name, u.birthday FROM users u "
+                    + "JOIN friendship f1 ON u.id = f1.friend_id AND f1.user_id = ? "
+                    + "JOIN friendship f2 ON u.id = f2.friend_id AND f2.user_id = ? "
+                    + "ORDER BY u.id";
 
     private final JdbcTemplate jdbc;
     private final UserRowMapper mapper;
@@ -80,5 +93,25 @@ public class UserDbStorage implements UserStorage {
     @Override
     public Optional<User> findById(long id) {
         return jdbc.query(FIND_BY_ID_QUERY, mapper, id).stream().findFirst();
+    }
+
+    @Override
+    public void addFriend(long userId, long friendId) {
+        jdbc.update(ADD_FRIEND_QUERY, userId, friendId);
+    }
+
+    @Override
+    public void removeFriend(long userId, long friendId) {
+        jdbc.update(REMOVE_FRIEND_QUERY, userId, friendId);
+    }
+
+    @Override
+    public Collection<User> findFriends(long userId) {
+        return jdbc.query(FIND_FRIENDS_QUERY, mapper, userId);
+    }
+
+    @Override
+    public Collection<User> findCommonFriends(long userId, long otherId) {
+        return jdbc.query(FIND_COMMON_FRIENDS_QUERY, mapper, userId, otherId);
     }
 }
