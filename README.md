@@ -91,6 +91,53 @@
 
 ## Схема базы данных
 
+```mermaid
+erDiagram
+    genres ||--o{ film_genres : "genre_id"
+    films ||--o{ film_genres : "film_id"
+    mpa |o--o{ films : "mpa_id"
+    films ||--o{ film_likes : "film_id"
+    users ||--o{ film_likes : "user_id"
+    users ||--o{ friendship : "user_id"
+    users ||--o{ friendship : "friend_id"
+
+    films {
+        BIGINT id PK
+        VARCHAR name
+        VARCHAR description "до 200 символов"
+        DATE release_date
+        INTEGER duration
+        INTEGER mpa_id FK "может быть NULL"
+    }
+    users {
+        BIGINT id PK
+        VARCHAR email
+        VARCHAR login
+        VARCHAR name
+        DATE birthday
+    }
+    mpa {
+        INTEGER id PK
+        VARCHAR name
+    }
+    genres {
+        INTEGER id PK
+        VARCHAR name
+    }
+    film_genres {
+        BIGINT film_id PK, FK
+        INTEGER genre_id PK, FK
+    }
+    film_likes {
+        BIGINT film_id PK, FK
+        BIGINT user_id PK, FK
+    }
+    friendship {
+        BIGINT user_id PK, FK
+        BIGINT friend_id PK, FK
+    }
+```
+
 | Таблица | Что хранит |
 |---|---|
 | `films` | фильмы; `mpa_id` — ссылка на рейтинг, может быть пустой |
@@ -103,6 +150,53 @@
 
 У таблиц-связок составной первичный ключ, поэтому одна и та же пара не запишется дважды.
 При удалении фильма или пользователя связанные с ним записи удаляются каскадно.
+
+<details>
+<summary><strong>Примеры запросов</strong></summary>
+
+Топ-10 популярных фильмов: по числу лайков, при равенстве — по id:
+
+```sql
+SELECT f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name AS mpa_name
+FROM films f
+LEFT JOIN mpa m ON f.mpa_id = m.id
+LEFT JOIN film_likes fl ON f.id = fl.film_id
+GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name
+ORDER BY COUNT(fl.user_id) DESC, f.id
+LIMIT 10;
+```
+
+Жанры фильма с id = 1 по порядку id:
+
+```sql
+SELECT g.id, g.name
+FROM film_genres fg
+JOIN genres g ON fg.genre_id = g.id
+WHERE fg.film_id = 1
+ORDER BY g.id;
+```
+
+Друзья пользователя с id = 1 — те, кого он добавил:
+
+```sql
+SELECT u.id, u.email, u.login, u.name, u.birthday
+FROM users u
+JOIN friendship f ON u.id = f.friend_id
+WHERE f.user_id = 1
+ORDER BY u.id;
+```
+
+Общие друзья пользователей с id = 1 и id = 2:
+
+```sql
+SELECT u.id, u.email, u.login, u.name, u.birthday
+FROM users u
+JOIN friendship f1 ON u.id = f1.friend_id AND f1.user_id = 1
+JOIN friendship f2 ON u.id = f2.friend_id AND f2.user_id = 2
+ORDER BY u.id;
+```
+
+</details>
 
 ## Реализация по этапам
 
@@ -156,10 +250,12 @@ API доведён до соответствия REST.
   и таблицы-связки `film_genres`, `film_likes`, `friendship`.
 - Созданы хранилища на `JdbcTemplate`: `FilmDbStorage`, `UserDbStorage`,
   `GenreDbStorage`, `MpaDbStorage` и мапперы `RowMapper` для каждой сущности.
+- Хранилища жанров и рейтингов, как и остальные, скрыты за интерфейсами (`GenreStorage`, `MpaStorage`).
 - Сервисы переключены на хранилища в базе через `@Qualifier`;
   in-memory реализации оставлены для unit-тестов.
 - Добавлены модели `Genre` и `Mpa`, сервисы и контроллеры `/genres` и `/mpa`.
-- Жанры фильма сохраняются пакетно (`batchUpdate`), а для списка фильмов загружаются одним запросом.
+- Жанры фильма сохраняются пакетно (`batchUpdate`), а для списка фильмов загружаются одним запросом
+  только по этим фильмам (`IN (...)`).
 - Дружба стала односторонней: одна запись в `friendship` — один пользователь добавил другого.
 - Популярные фильмы считаются в SQL: `LEFT JOIN` с лайками, `GROUP BY`, сортировка по числу лайков.
 - При создании и обновлении фильма проверяются рейтинг и жанры: неизвестный id — 404.
