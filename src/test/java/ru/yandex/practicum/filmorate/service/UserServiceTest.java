@@ -65,14 +65,15 @@ class UserServiceTest {
 
         userService.addFriend(user1.getId(), user2.getId());
 
-        // Оба должны видеть друг друга
-        assertTrue(userService.findById(user1.getId()).getFriends().contains(user2.getId()));
-        assertTrue(userService.findById(user2.getId()).getFriends().contains(user1.getId()));
+        // Дружба односторонняя: user2 появился у user1, обратной записи нет
+        Collection<User> friends1 = userService.getFriends(user1.getId());
+        assertEquals(1, friends1.size());
+        assertEquals(user2.getId(), friends1.iterator().next().getId());
+        assertTrue(userService.getFriends(user2.getId()).isEmpty());
 
         userService.removeFriend(user1.getId(), user2.getId());
 
-        assertFalse(userService.findById(user1.getId()).getFriends().contains(user2.getId()));
-        assertFalse(userService.findById(user2.getId()).getFriends().contains(user1.getId()));
+        assertTrue(userService.getFriends(user1.getId()).isEmpty());
     }
 
     @Test

@@ -5,8 +5,10 @@ import org.springframework.stereotype.Component;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.model.User;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -51,5 +53,43 @@ public class InMemoryUserStorage implements UserStorage {
     @Override
     public Optional<User> findById(long id) {
         return Optional.ofNullable(users.get(id));
+    }
+
+    // Существование пользователей проверяет сервис до вызова этих методов
+    @Override
+    public void addFriend(long userId, long friendId) {
+        users.get(userId).addFriend(friendId);
+    }
+
+    @Override
+    public void removeFriend(long userId, long friendId) {
+        users.get(userId).removeFriend(friendId);
+    }
+
+    @Override
+    public Collection<User> findFriends(long userId) {
+        User user = users.get(userId);
+        List<User> friends = new ArrayList<>();
+
+        for (Long friendId : user.getFriends()) {
+            friends.add(users.get(friendId));
+        }
+
+        return friends;
+    }
+
+    @Override
+    public Collection<User> findCommonFriends(long userId, long otherId) {
+        User user = users.get(userId);
+        User other = users.get(otherId);
+        List<User> common = new ArrayList<>();
+
+        for (Long friendId : user.getFriends()) {
+            if (other.getFriends().contains(friendId)) {
+                common.add(users.get(friendId));
+            }
+        }
+
+        return common;
     }
 }
