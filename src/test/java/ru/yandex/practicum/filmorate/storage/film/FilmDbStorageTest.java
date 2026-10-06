@@ -164,4 +164,63 @@ class FilmDbStorageTest {
                 popular.stream().map(Film::getId).toList());
         assertEquals(2, filmStorage.findPopular(2, null, null).size());
     }
+
+    @Test
+    void shouldFilterPopularByGenre() {
+        Film comedy = createFilm("Комедия");
+        comedy.getGenres().add(genre(1));
+        filmStorage.update(comedy);
+        Film drama = createFilm("Драма");
+        drama.getGenres().add(genre(2));
+        filmStorage.update(drama);
+        User anna = createUser("anna");
+        filmStorage.addLike(comedy.getId(), anna.getId());
+        filmStorage.addLike(drama.getId(), anna.getId());
+
+        List<Film> popular = filmStorage.findPopular(10, 1, null);
+
+        assertEquals(List.of(comedy.getId()), popular.stream().map(Film::getId).toList());
+    }
+
+    @Test
+    void shouldFilterPopularByYear() {
+        Film old = createFilm("Старый");
+        Film fresh = newFilm("Новый");
+        fresh.setReleaseDate(LocalDate.of(2020, 1, 1));
+        fresh = filmStorage.add(fresh);
+        User anna = createUser("anna");
+        filmStorage.addLike(old.getId(), anna.getId());
+        filmStorage.addLike(fresh.getId(), anna.getId());
+
+        List<Film> popular = filmStorage.findPopular(10, null, 2000);
+
+        assertEquals(List.of(old.getId()), popular.stream().map(Film::getId).toList());
+    }
+
+    @Test
+    void shouldFilterPopularByGenreAndYear() {
+        Film comedy2000 = newFilm("Комедия 2000");
+        comedy2000.getGenres().add(genre(1));
+        comedy2000 = filmStorage.add(comedy2000);
+        Film comedy2020 = newFilm("Комедия 2020");
+        comedy2020.setReleaseDate(LocalDate.of(2020, 1, 1));
+        comedy2020.getGenres().add(genre(1));
+        comedy2020 = filmStorage.add(comedy2020);
+        User anna = createUser("anna");
+        filmStorage.addLike(comedy2000.getId(), anna.getId());
+        filmStorage.addLike(comedy2020.getId(), anna.getId());
+
+        List<Film> popular = filmStorage.findPopular(10, 1, 2000);
+
+        assertEquals(List.of(comedy2000.getId()), popular.stream().map(Film::getId).toList());
+    }
+
+    @Test
+    void shouldReturnAllPopularWhenFiltersAreNull() {
+        Film film = createFilm("Один");
+        User anna = createUser("anna");
+        filmStorage.addLike(film.getId(), anna.getId());
+
+        assertEquals(1, filmStorage.findPopular(10, null, null).size());
+    }
 }
