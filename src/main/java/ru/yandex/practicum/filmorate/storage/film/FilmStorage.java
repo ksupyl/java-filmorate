@@ -18,7 +18,7 @@ public interface FilmStorage {
 
     Optional<Film> findById(long id);
 
-    List<Film> findPopular(int count);
+    List<Film> findPopular(int count, Integer genreId, Integer year);
 
     void addLike(long filmId, long userId);
 

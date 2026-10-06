@@ -33,11 +33,21 @@ public class FilmDbStorage implements FilmStorage {
                     + "LEFT JOIN mpa m ON f.mpa_id = m.id ";
     private static final String FIND_ALL_QUERY = SELECT_FILMS + "ORDER BY f.id";
     private static final String FIND_BY_ID_QUERY = SELECT_FILMS + "WHERE f.id = ?";
-    private static final String FIND_POPULAR_QUERY = SELECT_FILMS
-            + "LEFT JOIN film_likes fl ON f.id = fl.film_id "
+
+    // Базовый запрос для популярных фильмов: WHERE-условия добавляются динамически
+    private static final String FIND_POPULAR_BASE_QUERY = SELECT_FILMS
+            + "LEFT JOIN film_likes fl ON f.id = fl.film_id ";
+    // Хвост запроса популярных фильмов: группировка, сортировка и лимит
+    private static final String FIND_POPULAR_TAIL_QUERY = " "
             + "GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name "
             + "ORDER BY COUNT(fl.user_id) DESC, f.id "
             + "LIMIT ?";
+
+    // Условия фильтрации популярных фильмов: по жанру и по году выпуска
+    private static final String FIND_POPULAR_GENRE_FILTER =
+            "f.id IN (SELECT film_id FROM film_genres WHERE genre_id = ?)";
+    private static final String FIND_POPULAR_YEAR_FILTER =
+            "YEAR(f.release_date) = ?";
     private static final String INSERT_QUERY =
             "INSERT INTO films (name, description, release_date, duration, mpa_id) VALUES (?, ?, ?, ?, ?)";
     private static final String UPDATE_QUERY =
@@ -124,8 +134,22 @@ public class FilmDbStorage implements FilmStorage {
     }
 
     @Override
-    public List<Film> findPopular(int count) {
-        List<Film> films = jdbc.query(FIND_POPULAR_QUERY, mapper, count);
+    public List<Film> findPopular(int count, Integer genreId, Integer year) {
+        List<String> conditions = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+
+        if (genreId != null) {
+            // Подзапрос вместо JOIN: иначе фильм с несколькими жанрами задвоит строки
+            conditions.add(FIND_POPULAR_GENRE_FILTER);
+            params.add(genreId);
+        }
+        if (year != null) {
+            conditions.add(FIND_POPULAR_YEAR_FILTER);
+            params.add(year);
+        }
+        params.add(count); // LIMIT всегда последний
+
+        List<Film> films = jdbc.query(buildPopularQuery(conditions), mapper, params.toArray());
         loadGenresForFilms(films);
         return films;
     }
@@ -139,6 +163,15 @@ public class FilmDbStorage implements FilmStorage {
     public boolean removeLike(long filmId, long userId) {
         // update возвращает число удалённых строк: 0 — лайка не было
         return jdbc.update(REMOVE_LIKE_QUERY, filmId, userId) > 0;
+    }
+
+    // Собирает запрос популярных фильмов: базовое чтение + WHERE по условиям + группировка с лимитом
+    private String buildPopularQuery(List<String> conditions) {
+        StringBuilder sql = new StringBuilder(FIND_POPULAR_BASE_QUERY);
+        if (!conditions.isEmpty()) {
+            sql.append("WHERE ").append(String.join(" AND ", conditions)).append(" ");
+        }
+        return sql.append(FIND_POPULAR_TAIL_QUERY).toString();
     }
 
     // Рейтинга может не быть — тогда в колонку mpa_id уходит NULL

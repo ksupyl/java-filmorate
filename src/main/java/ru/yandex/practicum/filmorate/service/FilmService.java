@@ -77,14 +77,24 @@ public class FilmService {
         return film;
     }
 
-    public Collection<Film> getPopular(int count) {
+    public Collection<Film> getPopular(int count, Integer genreId, Integer year) {
         // Валидация: count должен быть положительным числом
         if (count <= 0) {
             throw new ValidationException(
                     "Количество фильмов должно быть положительным числом, получено: " + count
             );
         }
-        return filmStorage.findPopular(count);
+        // Жанр, если указан, должен существовать — иначе 404
+        if (genreId != null) {
+            genreService.findById(genreId);
+        }
+        // Валидация: год, если указан, должен быть положительным
+        if (year != null && year <= 0) {
+            throw new ValidationException(
+                    "Год должен быть положительным числом, получено: " + year
+            );
+        }
+        return filmStorage.findPopular(count, genreId, year);
     }
 
     // Валидация даты релиза — не может быть раньше дня рождения кино
