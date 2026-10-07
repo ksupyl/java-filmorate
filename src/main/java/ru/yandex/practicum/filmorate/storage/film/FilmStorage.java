@@ -20,6 +20,8 @@ public interface FilmStorage {
 
     List<Film> findPopular(int count, Integer genreId, Integer year);
 
+    List<Film> findCommon(long userId, long friendId);
+
     void addLike(long filmId, long userId);
 
     boolean removeLike(long filmId, long userId);

@@ -37,17 +37,21 @@ public class FilmDbStorage implements FilmStorage {
     // Базовый запрос для популярных фильмов: WHERE-условия добавляются динамически
     private static final String FIND_POPULAR_BASE_QUERY = SELECT_FILMS
             + "LEFT JOIN film_likes fl ON f.id = fl.film_id ";
-    // Хвост запроса популярных фильмов: группировка, сортировка и лимит
+    // Хвост запроса популярных фильмов: группировка и сортировка по числу лайков
     private static final String FIND_POPULAR_TAIL_QUERY = " "
             + "GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name "
-            + "ORDER BY COUNT(fl.user_id) DESC, f.id "
-            + "LIMIT ?";
+            + "ORDER BY COUNT(fl.user_id) DESC, f.id";
+    // Лимит отдельно: в общих фильмах, поиске и фильмах режиссёра его нет
+    private static final String LIMIT_CLAUSE = " LIMIT ?";
 
     // Условия фильтрации популярных фильмов: по жанру и по году выпуска
     private static final String FIND_POPULAR_GENRE_FILTER =
             "f.id IN (SELECT film_id FROM film_genres WHERE genre_id = ?)";
     private static final String FIND_POPULAR_YEAR_FILTER =
             "YEAR(f.release_date) = ?";
+    private static final String LIKED_BY_USER_FILTER =
+            "f.id IN (SELECT film_id FROM film_likes WHERE user_id = ?)";
+
     private static final String INSERT_QUERY =
             "INSERT INTO films (name, description, release_date, duration, mpa_id) VALUES (?, ?, ?, ?, ?)";
     private static final String UPDATE_QUERY =
@@ -149,7 +153,17 @@ public class FilmDbStorage implements FilmStorage {
         }
         params.add(count); // LIMIT всегда последний
 
-        List<Film> films = jdbc.query(buildPopularQuery(conditions), mapper, params.toArray());
+        String sql = buildPopularQuery(conditions) + LIMIT_CLAUSE;
+        List<Film> films = jdbc.query(sql, mapper, params.toArray());
+        loadGenresForFilms(films);
+        return films;
+    }
+
+    @Override
+    public List<Film> findCommon(long userId, long friendId) {
+        // Одно и то же условие дважды, с разными id: фильм лайкнули оба
+        String sql = buildPopularQuery(List.of(LIKED_BY_USER_FILTER, LIKED_BY_USER_FILTER));
+        List<Film> films = jdbc.query(sql, mapper, userId, friendId);
         loadGenresForFilms(films);
         return films;
     }
@@ -165,7 +179,7 @@ public class FilmDbStorage implements FilmStorage {
         return jdbc.update(REMOVE_LIKE_QUERY, filmId, userId) > 0;
     }
 
-    // Собирает запрос популярных фильмов: базовое чтение + WHERE по условиям + группировка с лимитом
+    // Собирает запрос: чтение + WHERE по условиям + сортировка по числу лайков, без LIMIT
     private String buildPopularQuery(List<String> conditions) {
         StringBuilder sql = new StringBuilder(FIND_POPULAR_BASE_QUERY);
         if (!conditions.isEmpty()) {
