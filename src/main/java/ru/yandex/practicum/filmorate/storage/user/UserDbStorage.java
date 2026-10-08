@@ -6,7 +6,9 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
+import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.User;
+import ru.yandex.practicum.filmorate.storage.mapper.FilmRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.UserRowMapper;
 
 import java.sql.Date;
@@ -14,6 +16,7 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.Collection;
 import java.util.Optional;
+import java.util.List;
 
 @Repository
 public class UserDbStorage implements UserStorage {
@@ -42,13 +45,31 @@ public class UserDbStorage implements UserStorage {
                     + "JOIN friendship f2 ON u.id = f2.friend_id AND f2.user_id = ? "
                     + "ORDER BY u.id";
 
+    private static final String FIND_MOST_SIMILAR_USER_QUERY =
+            "SELECT fl2.user_id AS other_id, COUNT(*) AS common "
+                    + "FROM film_likes fl1 "
+                    + "JOIN film_likes fl2 ON fl1.film_id = fl2.film_id "
+                    + "WHERE fl1.user_id = ? AND fl2.user_id <> ? "
+                    + "GROUP BY fl2.user_id "
+                    + "ORDER BY common DESC, fl2.user_id "
+                    + "LIMIT 1";
+    private static final String FIND_RECOMMENDATIONS_QUERY =
+            "SELECT f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name AS mpa_name "
+                    + "FROM films f "
+                    + "JOIN film_likes fl ON f.id = fl.film_id "
+                    + "LEFT JOIN mpa m ON f.mpa_id = m.id "
+                    + "WHERE fl.user_id = ? "
+                    + "AND f.id NOT IN (SELECT film_id FROM film_likes WHERE user_id = ?) "
+                    + "ORDER BY f.id";
     private final JdbcTemplate jdbc;
     private final UserRowMapper mapper;
+    private final FilmRowMapper filmMapper;
 
     @Autowired
-    public UserDbStorage(JdbcTemplate jdbc, UserRowMapper mapper) {
+    public UserDbStorage(JdbcTemplate jdbc, UserRowMapper mapper, FilmRowMapper filmMapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.filmMapper = filmMapper;
     }
 
     @Override
@@ -113,5 +134,20 @@ public class UserDbStorage implements UserStorage {
     @Override
     public Collection<User> findCommonFriends(long userId, long otherId) {
         return jdbc.query(FIND_COMMON_FRIENDS_QUERY, mapper, userId, otherId);
+    }
+
+    @Override
+    public List<Film> findRecommendations(long userId) {
+        List<Long> similarUserIds = jdbc.query(
+                FIND_MOST_SIMILAR_USER_QUERY,
+                (rs, rowNum) -> rs.getLong("other_id"),
+                userId, userId
+        );
+        if (similarUserIds.isEmpty()) {
+            return List.of();
+        }
+
+        Long similarUserId = similarUserIds.getFirst();
+        return jdbc.query(FIND_RECOMMENDATIONS_QUERY, filmMapper, similarUserId, userId);
     }
 }
