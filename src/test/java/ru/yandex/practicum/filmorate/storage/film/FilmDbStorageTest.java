@@ -135,6 +135,37 @@ class FilmDbStorageTest {
         assertTrue(filmStorage.findById(film.getId()).isEmpty());
     }
 
+    // Без ON DELETE CASCADE удаление упало бы на внешних ключах film_genres и film_likes
+    @Test
+    void shouldDeleteFilmWithGenresAndLikes() {
+        Film film = newFilm("С жанром и лайком");
+        film.getGenres().add(genre(1));
+        film = filmStorage.add(film);
+        User anna = createUser("anna");
+        filmStorage.addLike(film.getId(), anna.getId());
+
+        filmStorage.delete(film.getId());
+
+        assertTrue(filmStorage.findById(film.getId()).isEmpty());
+        assertTrue(filmStorage.findPopular(10, null, null).isEmpty());
+    }
+
+    // Лайки удалённого пользователя пропадают из подсчёта популярных
+    @Test
+    void shouldNotCountLikesOfDeletedUser() {
+        Film first = createFilm("Без лайков");
+        Film liked = createFilm("С лайком");
+        User boris = createUser("boris");
+        filmStorage.addLike(liked.getId(), boris.getId());
+        assertEquals(liked.getId(), filmStorage.findPopular(10, null, null).get(0).getId());
+
+        userStorage.delete(boris.getId());
+
+        // Лайков не осталось ни у кого — фильмы идут по порядку id
+        List<Long> ids = filmStorage.findPopular(10, null, null).stream().map(Film::getId).toList();
+        assertEquals(List.of(first.getId(), liked.getId()), ids);
+    }
+
     @Test
     void shouldAddAndRemoveLike() {
         Film film = createFilm("Любимый");
