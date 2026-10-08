@@ -154,4 +154,8 @@ public class FilmService {
     public Film findById(long id) {
         return getFilmOrThrow(id);
     }
+
+    public Collection<Film> findByDirectorSorted(long directorId, String sortBy) {
+        return filmStorage.findFilmByDirector(directorId, sortBy);
+    }
 }

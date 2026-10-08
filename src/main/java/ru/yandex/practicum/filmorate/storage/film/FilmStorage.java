@@ -25,4 +25,6 @@ public interface FilmStorage {
     void addLike(long filmId, long userId);
 
     boolean removeLike(long filmId, long userId);
+
+    List<Film> findFilmByDirector(long directorId, String sortBy);
 }

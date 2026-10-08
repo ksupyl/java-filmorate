@@ -45,4 +45,6 @@ public class Film {
     public boolean removeLike(Long userId) {
         return likes.remove(userId);
     }
+
+    private Set<Director> directors = new LinkedHashSet<>();
 }
