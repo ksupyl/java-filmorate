@@ -147,6 +147,12 @@ public class FilmService {
         return filmStorage.update(film);
     }
 
+    // Лайки, жанры и прочие связи фильма база удаляет сама — каскадом из schema.sql
+    public void delete(long id) {
+        filmStorage.delete(id); // нет фильма — хранилище бросит NotFoundException, это 404
+        log.debug("Фильм id={} удалён", id);
+    }
+
     public Collection<Film> findAll() {
         return filmStorage.findAll();
     }
