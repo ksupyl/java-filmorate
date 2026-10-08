@@ -18,6 +18,7 @@
 - У фильма есть рейтинг и список жанров; жанры в ответе — без дублей, по порядку id.
 - Односторонняя дружба: добавление/удаление друзей, список друзей, общие друзья.
 - Лайки фильмам: добавление/удаление, топ-N фильмов по количеству лайков.
+- Отзывы к фильмам: положительные и негативные, с рейтингом полезности по лайкам и дизлайкам.
 - Слоистая архитектура: контроллер → сервис → хранилище, выбор реализации хранилища через `@Qualifier`.
 - Внедрение зависимостей через конструктор (`@Autowired`).
 - Строгая валидация входящих данных через `spring-boot-starter-validation`.
@@ -81,6 +82,18 @@
 - `GET /users/{id}/friends` — список друзей пользователя.
 - `GET /users/{id}/friends/common/{otherId}` — общие друзья с другим пользователем.
 
+### Отзывы (`/reviews`)
+- `POST /reviews` — добавить отзыв.
+- `PUT /reviews` — изменить текст и тип отзыва.
+- `DELETE /reviews/{id}` — удалить отзыв.
+- `GET /reviews/{id}` — получить отзыв по ID.
+- `GET /reviews?filmId={filmId}&count={count}` — отзывы к фильму (без `filmId` — ко всем),
+  по убыванию полезности; по умолчанию 10.
+- `PUT /reviews/{id}/like/{userId}` — отметить отзыв полезным.
+- `PUT /reviews/{id}/dislike/{userId}` — отметить отзыв бесполезным.
+- `DELETE /reviews/{id}/like/{userId}` — убрать лайк.
+- `DELETE /reviews/{id}/dislike/{userId}` — убрать дизлайк.
+
 ### Жанры (`/genres`)
 - `GET /genres` — получить список всех жанров.
 - `GET /genres/{id}` — получить жанр по ID.
@@ -100,6 +113,10 @@ erDiagram
     users ||--o{ film_likes : "user_id"
     users ||--o{ friendship : "user_id"
     users ||--o{ friendship : "friend_id"
+    users ||--o{ reviews : "user_id"
+    films ||--o{ reviews : "film_id"
+    reviews ||--o{ review_likes : "review_id"
+    users ||--o{ review_likes : "user_id"
 
     films {
         BIGINT id PK
@@ -136,6 +153,18 @@ erDiagram
         BIGINT user_id PK, FK
         BIGINT friend_id PK, FK
     }
+    reviews {
+        BIGINT id PK
+        VARCHAR content
+        BOOLEAN is_positive
+        BIGINT user_id FK
+        BIGINT film_id FK
+    }
+    review_likes {
+        BIGINT review_id PK, FK
+        BIGINT user_id PK, FK
+        BOOLEAN is_useful "TRUE — лайк, FALSE — дизлайк"
+    }
 ```
 
 | Таблица | Что хранит |
@@ -147,6 +176,8 @@ erDiagram
 | `film_genres` | связь «фильм — жанр», многие ко многим |
 | `film_likes` | лайки: какой пользователь лайкнул какой фильм |
 | `friendship` | дружба: одна строка — `user_id` добавил в друзья `friend_id`; подтверждённая (взаимная) дружба — две встречные строки |
+| `reviews` | отзывы пользователей к фильмам; рейтинг полезности не хранится, а считается по `review_likes` |
+| `review_likes` | оценки отзывов: одна строка — один пользователь, лайк или дизлайк |
 
 У таблиц-связок составной первичный ключ, поэтому одна и та же пара не запишется дважды.
 При удалении фильма или пользователя связанные с ним записи удаляются каскадно.
