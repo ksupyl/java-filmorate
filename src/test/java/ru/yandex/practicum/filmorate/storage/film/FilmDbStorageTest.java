@@ -223,4 +223,37 @@ class FilmDbStorageTest {
 
         assertEquals(1, filmStorage.findPopular(10, null, null).size());
     }
+
+    @Test
+    void shouldFindCommonFilmsSortedByPopularity() {
+        Film first = createFilm("Первый");
+        Film second = createFilm("Второй");
+        Film onlyAnna = createFilm("Только Анны");
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        User vera = createUser("vera");
+        // Оба лайкнули первый и второй; у второго есть ещё лайк Веры — он популярнее
+        filmStorage.addLike(first.getId(), anna.getId());
+        filmStorage.addLike(first.getId(), boris.getId());
+        filmStorage.addLike(second.getId(), anna.getId());
+        filmStorage.addLike(second.getId(), boris.getId());
+        filmStorage.addLike(second.getId(), vera.getId());
+        // Этот лайкнула только Анна — в общие не попадает
+        filmStorage.addLike(onlyAnna.getId(), anna.getId());
+
+        List<Film> common = filmStorage.findCommon(anna.getId(), boris.getId());
+
+        assertEquals(List.of(second.getId(), first.getId()),
+                common.stream().map(Film::getId).toList());
+    }
+
+    @Test
+    void shouldReturnEmptyCommonFilmsWhenNoSharedLikes() {
+        Film film = createFilm("Один");
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        filmStorage.addLike(film.getId(), anna.getId());
+
+        assertEquals(0, filmStorage.findCommon(anna.getId(), boris.getId()).size());
+    }
 }

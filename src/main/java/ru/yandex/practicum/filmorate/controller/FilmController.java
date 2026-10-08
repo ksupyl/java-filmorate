@@ -65,4 +65,10 @@ public class FilmController {
         log.info("GET /films/popular?count={}&genreId={}&year={}", count, genreId, year);
         return filmService.getPopular(count, genreId, year);
     }
+
+    @GetMapping("/common")
+    public Collection<Film> getCommon(@RequestParam long userId, @RequestParam long friendId) {
+        log.info("GET /films/common?userId={}&friendId={}", userId, friendId);
+        return filmService.getCommon(userId, friendId);
+    }
 }

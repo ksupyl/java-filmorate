@@ -97,6 +97,13 @@ public class FilmService {
         return filmStorage.findPopular(count, genreId, year);
     }
 
+    // Общие фильмы двух пользователей — те, что лайкнули оба, по убыванию популярности
+    public Collection<Film> getCommon(long userId, long friendId) {
+        getUserOrThrow(userId); // оба пользователя должны существовать — иначе 404
+        getUserOrThrow(friendId);
+        return filmStorage.findCommon(userId, friendId);
+    }
+
     // Валидация даты релиза — не может быть раньше дня рождения кино
     private void validateReleaseDate(Film film) {
         if (film.getReleaseDate().isBefore(CINEMA_BIRTHDAY)) {
