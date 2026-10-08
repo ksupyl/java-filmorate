@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.context.annotation.Import;
+import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.model.Mpa;
@@ -150,7 +151,6 @@ class FilmDbStorageTest {
         assertTrue(filmStorage.findPopular(10, null, null).isEmpty());
     }
 
-    // Лайки удалённого пользователя пропадают из подсчёта популярных
     @Test
     void shouldNotCountLikesOfDeletedUser() {
         Film first = createFilm("Без лайков");
@@ -164,6 +164,11 @@ class FilmDbStorageTest {
         // Лайков не осталось ни у кого — фильмы идут по порядку id
         List<Long> ids = filmStorage.findPopular(10, null, null).stream().map(Film::getId).toList();
         assertEquals(List.of(first.getId(), liked.getId()), ids);
+    }
+
+    @Test
+    void shouldThrowWhenDeletingUnknownFilm() {
+        assertThrows(NotFoundException.class, () -> filmStorage.delete(9999));
     }
 
     @Test
