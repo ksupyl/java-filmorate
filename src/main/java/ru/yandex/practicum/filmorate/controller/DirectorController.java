@@ -33,13 +33,13 @@ public class DirectorController {
 
     @PostMapping
     public Director createDirector(@RequestBody Director director) {
-        log.info("POST /directors/{}", director);
+        log.info("POST /directors, body:{}", director);
         return directorService.addDirector(director);
     }
 
     @PutMapping
     public Director updateDirector(@RequestBody Director director) {
-        log.info("PUT /directors/{}", director);
+        log.info("PUT /directors, body:{}", director);
         return directorService.updateDirector(director);
     }
 
