@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -37,6 +38,8 @@ public class Film {
     @JsonIgnore
     private Set<Long> likes = new HashSet<>();
 
+    private Set<Director> directors = new LinkedHashSet<>();
+
     public void addLike(Long userId) {
         likes.add(userId);
     }
@@ -45,5 +48,4 @@ public class Film {
         return likes.remove(userId);
     }
 
-    private Set<Director> directors = new LinkedHashSet<>();
 }

@@ -13,6 +13,7 @@ import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.storage.mapper.DirectorRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.FilmRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.GenreRowMapper;
+
 import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -237,7 +238,7 @@ public class FilmDbStorage implements FilmStorage {
         return films;
     }
 
-    // Собирает запрос популярных фильмов: базовое чтение + WHERE по условиям + группировка с лимитом
+    //Собирает запрос: чтение + WHERE по условиям + сортировка по числу лайков, без LIMIT
     private String buildPopularQuery(List<String> conditions) {
         StringBuilder sql = new StringBuilder(FIND_POPULAR_BASE_QUERY);
         if (!conditions.isEmpty()) {

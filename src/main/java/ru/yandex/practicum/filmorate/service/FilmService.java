@@ -6,10 +6,12 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
+import ru.yandex.practicum.filmorate.model.Director;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
+
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashSet;
@@ -29,16 +31,19 @@ public class FilmService {
     // Нужны для проверки рейтинга и жанра из запроса
     private final MpaService mpaService;
     private final GenreService genreService;
+    private final DirectorService directorService;
 
     @Autowired
     public FilmService(@Qualifier("filmDbStorage") FilmStorage filmStorage,
                        @Qualifier("userDbStorage") UserStorage userStorage,
                        MpaService mpaService,
-                       GenreService genreService) {
+                       GenreService genreService,
+                       DirectorService directorService) {
         this.filmStorage = filmStorage;
         this.userStorage = userStorage;
         this.mpaService = mpaService;
         this.genreService = genreService;
+        this.directorService = directorService;
     }
 
     // Получение фильма по id с проверкой существования
@@ -133,9 +138,27 @@ public class FilmService {
         }
     }
 
+    private void validateDirectors(Film film) {
+
+        if (film.getDirectors() == null || film.getDirectors().isEmpty()) {
+            return;
+        }
+
+        Set<Long> knownIds = new HashSet<>();
+        for (Director director : directorService.getAllDirectors()) {
+            knownIds.add(director.getId());
+        }
+        for (Director director : film.getDirectors()) {
+            if (!knownIds.contains(director.getId())) {
+                throw new NotFoundException("Режиссёр с id=" + director.getId() + " не найден");
+            }
+        }
+    }
+
     public Film add(Film film) {
         validateReleaseDate(film);
         validateMpaAndGenres(film);
+        validateDirectors(film);
         return filmStorage.add(film);
     }
 
@@ -143,6 +166,7 @@ public class FilmService {
         getFilmOrThrow(film.getId()); // проверка существования — иначе 404
         validateReleaseDate(film);
         validateMpaAndGenres(film);
+        validateDirectors(film);
         return filmStorage.update(film);
     }
 
@@ -155,6 +179,7 @@ public class FilmService {
     }
 
     public Collection<Film> findByDirectorSorted(long directorId, String sortBy) {
+        directorService.getDirectorById(directorId); // проверка существования режиссёра — иначе 404
         return filmStorage.findFilmByDirector(directorId, sortBy);
     }
 }

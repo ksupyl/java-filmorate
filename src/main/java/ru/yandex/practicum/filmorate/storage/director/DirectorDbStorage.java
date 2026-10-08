@@ -21,7 +21,7 @@ public class DirectorDbStorage implements DirectorStorage {
     private static final String UPDATE_QUERY = "UPDATE directors SET name = ? WHERE id = ?";
     private static final String DELETE_QUERY = "DELETE FROM directors WHERE id = ?";
     private static final String SELECT_BY_ID_QUERY = "SELECT * FROM directors WHERE id = ?";
-    private static final String SELECT_ALL_QUERY = "SELECT * FROM directors";
+    private static final String SELECT_ALL_QUERY = "SELECT * FROM directors ORDER BY id";
 
     @Autowired
     public DirectorDbStorage(JdbcTemplate jdbcTemplate, DirectorRowMapper directorRowMapper) {
@@ -60,7 +60,7 @@ public class DirectorDbStorage implements DirectorStorage {
     @Override
     public void removeDirector(long id) {
         Director director = findDirectorById(id)
-                .orElseThrow(() -> new NotFoundException("Director not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Режиссёр с id " + id + " не найден"));
         jdbcTemplate.update(DELETE_QUERY, id);
     }
 

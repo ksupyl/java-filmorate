@@ -29,7 +29,7 @@ public class DirectorService {
 
     public Director getDirectorById(long id) {
         return directorStorage.findDirectorById(id)
-                .orElseThrow(() -> new NotFoundException("Director with id " + id + " not found"));
+                .orElseThrow(() -> new NotFoundException("Режиссер с id " + id + " не найден"));
     }
 
     public java.util.List<Director> getAllDirectors() {
