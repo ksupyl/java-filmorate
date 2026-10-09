@@ -102,6 +102,12 @@ public class UserService {
         return userStorage.update(user);
     }
 
+    // Дружбу, лайки и прочие связи пользователя база удаляет сама — каскадом из schema.sql
+    public void delete(long id) {
+        userStorage.delete(id); // нет пользователя — хранилище бросит NotFoundException, это 404
+        log.debug("Пользователь id={} удалён", id);
+    }
+
     public Collection<User> findAll() {
         return userStorage.findAll();
     }

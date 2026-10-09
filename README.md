@@ -11,7 +11,7 @@
 
 ## Ключевые возможности на данном этапе
 
-- CRUD-операции для `Film` и `User` (создание, обновление, получение по ID и списком).
+- CRUD-операции для `Film` и `User` (создание, обновление, удаление, получение по ID и списком).
 - Хранение данных в базе H2 (файловый режим — данные переживают перезапуск),
   доступ через `JdbcTemplate` и `RowMapper`.
 - Справочники жанров и рейтингов MPA в базе, эндпоинты `/genres` и `/mpa`.
@@ -19,6 +19,7 @@
 - У фильмов можно указывать режиссёров и получать список фильмов выбранного режиссёра с сортировкой по году выпуска или количеству лайков.
 - Односторонняя дружба: добавление/удаление друзей, список друзей, общие друзья.
 - Лайки фильмам: добавление/удаление, топ-N фильмов по количеству лайков.
+- Отзывы к фильмам: положительные и негативные, с рейтингом полезности по лайкам и дизлайкам.
 - Слоистая архитектура: контроллер → сервис → хранилище, выбор реализации хранилища через `@Qualifier`.
 - Внедрение зависимостей через конструктор (`@Autowired`).
 - Строгая валидация входящих данных через `spring-boot-starter-validation`.
@@ -68,22 +69,40 @@
 - `GET /films/{id}` — получить фильм по ID.
 - `POST /films` — добавить новый фильм.
 - `PUT /films` — обновить существующий фильм.
+- `DELETE /films/{id}` — удалить фильм; связанные с ним записи удаляются каскадно.
 - `PUT /films/{id}/like/{userId}` — поставить лайк фильму.
 - `DELETE /films/{id}/like/{userId}` — убрать лайк.
 - `GET /films/popular?count={count}` — топ-N фильмов по лайкам (по умолчанию 10).
 - `GET /films/director/{directorId}` — получить список фильмов режиссёра.
 - `GET /films/director/{directorId}?sortBy=likes` — получить список фильмов режиссёра, отсортированный по лайкам.
 - `GET /films/director/{directorId}?sortBy=year` — получить список фильмов режиссёра, отсортированный по году выпуска.
+- `GET /films/popular?count={count}&genreId={genreId}&year={year}` — топ-N фильмов по лайкам
+  (по умолчанию 10); жанр и год — необязательные фильтры.
+- `GET /films/common?userId={userId}&friendId={friendId}` — общие фильмы двух пользователей,
+  по убыванию популярности.
 
 ### Пользователи (`/users`)
 - `GET /users` — получить список всех пользователей.
 - `GET /users/{id}` — получить пользователя по ID.
 - `POST /users` — создать нового пользователя.
 - `PUT /users` — обновить данные пользователя.
+- `DELETE /users/{id}` — удалить пользователя; связанные с ним записи удаляются каскадно.
 - `PUT /users/{id}/friends/{friendId}` — добавить в друзья (дружба односторонняя).
 - `DELETE /users/{id}/friends/{friendId}` — удалить из друзей.
 - `GET /users/{id}/friends` — список друзей пользователя.
 - `GET /users/{id}/friends/common/{otherId}` — общие друзья с другим пользователем.
+
+### Отзывы (`/reviews`)
+- `POST /reviews` — добавить отзыв.
+- `PUT /reviews` — изменить текст и тип отзыва.
+- `DELETE /reviews/{id}` — удалить отзыв.
+- `GET /reviews/{id}` — получить отзыв по ID.
+- `GET /reviews?filmId={filmId}&count={count}` — отзывы к фильму (без `filmId` — ко всем),
+  по убыванию полезности; по умолчанию 10.
+- `PUT /reviews/{id}/like/{userId}` — отметить отзыв полезным.
+- `PUT /reviews/{id}/dislike/{userId}` — отметить отзыв бесполезным.
+- `DELETE /reviews/{id}/like/{userId}` — убрать лайк.
+- `DELETE /reviews/{id}/dislike/{userId}` — убрать дизлайк.
 
 ### Жанры (`/genres`)
 - `GET /genres` — получить список всех жанров.
@@ -113,6 +132,10 @@ erDiagram
     users ||--o{ friendship : "friend_id"
     films ||--o{film_director : "film_id"
     directors ||--o{film_director : "director_id"
+    users ||--o{ reviews : "user_id"
+    films ||--o{ reviews : "film_id"
+    reviews ||--o{ review_likes : "review_id"
+    users ||--o{ review_likes : "user_id"
 
     films {
         BIGINT id PK
@@ -157,6 +180,18 @@ erDiagram
         BIGINT film_id  PK, FK
         BIGINT director_id PK, FK
     }
+    reviews {
+        BIGINT id PK
+        VARCHAR content
+        BOOLEAN is_positive
+        BIGINT user_id FK
+        BIGINT film_id FK
+    }
+    review_likes {
+        BIGINT review_id PK, FK
+        BIGINT user_id PK, FK
+        BOOLEAN is_useful "TRUE — лайк, FALSE — дизлайк"
+    }
 ```
 
 | Таблица | Что хранит |
@@ -170,6 +205,8 @@ erDiagram
 | `friendship` | дружба: одна строка — `user_id` добавил в друзья `friend_id`; подтверждённая (взаимная) дружба — две встречные строки |
 | `directors` | режиссёры |
 | `film_director` | связь "фильм — режиссёр", многие ко многим |
+| `reviews` | отзывы пользователей к фильмам; рейтинг полезности не хранится, а считается по `review_likes` |
+| `review_likes` | оценки отзывов: одна строка — один пользователь, лайк или дизлайк |
 
 У таблиц-связок составной первичный ключ, поэтому одна и та же пара не запишется дважды.
 При удалении фильма или пользователя связанные с ним записи удаляются каскадно.
