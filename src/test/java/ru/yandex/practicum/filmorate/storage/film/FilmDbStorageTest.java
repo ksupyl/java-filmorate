@@ -348,4 +348,45 @@ class FilmDbStorageTest {
         assertEquals(film3.getId(), allFilms.get(1).getId());
         assertEquals(film2.getId(), allFilms.get(2).getId());
     }
+
+    @Test
+    void searchFilmByTitle() {
+        Film film = newFilm("Интерстеллар");
+        film.setReleaseDate(LocalDate.of(2000, 1, 1));
+        film = filmStorage.add(film);
+        List<Film> foundFilms = filmStorage.searchFilms("инт",  List.of("title"));
+        assertEquals(1, foundFilms.size());
+        assertEquals(film.getId(), foundFilms.get(0).getId());
+        assertEquals("Интерстеллар", foundFilms.get(0).getName());
+    }
+
+    @Test
+    void searchFilmByDirector() {
+        Director director = createDirector("Кристофер Нолан");
+        directorStorage.addDirector(director);
+        Film film = newFilm("Начало");
+        film.getDirectors().add(director);
+        film = filmStorage.add(film);
+        List<Film> foundFilms = filmStorage.searchFilms("нол",  List.of("director"));
+        assertEquals(1, foundFilms.size());
+        assertEquals(film.getId(), foundFilms.get(0).getId());
+        assertEquals("Начало", foundFilms.get(0).getName());
+    }
+
+    @Test
+    void searchFilmByTitleAndDirector() {
+        Director director = createDirector("Кристофер Нолан");
+        directorStorage.addDirector(director);
+        Film film = newFilm("Начало");
+        film.getDirectors().add(director);
+        film = filmStorage.add(film);
+        Long filmId = film.getId();
+        Film film1 = newFilm("Нолан и его фильмы");
+        film1 = filmStorage.add(film1);
+        Long film1Id = film1.getId();
+        List<Film> foundFilms = filmStorage.searchFilms("нол",  List.of("title", "director"));
+        assertEquals(2, foundFilms.size());
+        assertTrue(foundFilms.stream().anyMatch(f -> f.getId().equals(filmId)));
+        assertTrue(foundFilms.stream().anyMatch(f -> f.getId().equals(film1Id)));
+    }
 }

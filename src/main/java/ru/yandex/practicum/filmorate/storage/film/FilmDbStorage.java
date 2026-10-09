@@ -104,6 +104,14 @@ public class FilmDbStorage implements FilmStorage {
             "WHERE fd.director_id = ? " +
             "GROUP BY f.id, f.name, f.description, f.release_date, " +
             "f.duration, f.mpa_id, m.name ";
+    private static final String FIND_FILMS_BY_SEARCH_QUERY =
+            "SELECT f.id, f.name, f.description, f.release_date, f.duration, " +
+                    "f.mpa_id, m.name AS mpa_name " +
+                    "FROM films f " +
+                    "LEFT JOIN mpa m ON f.mpa_id = m.id " +
+                    "LEFT JOIN film_director fd ON f.id = fd.film_id " +
+                    "LEFT JOIN directors d ON fd.director_id = d.id " +
+                    "LEFT JOIN film_likes fl ON f.id = fl.film_id ";
 
     private final JdbcTemplate jdbc;
     private final FilmRowMapper mapper;
@@ -235,6 +243,40 @@ public class FilmDbStorage implements FilmStorage {
         loadDirectors(films);
         loadGenresForFilms(films);
 
+        return films;
+    }
+
+    @Override
+    public List<Film> searchFilms(String query, List<String> by) {
+        StringBuilder sql = new StringBuilder(FIND_FILMS_BY_SEARCH_QUERY);
+        List<String> conditions = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+
+        if (by.contains("director")) {
+            conditions.add("LOWER(d.name) LIKE ?");
+            params.add("%" + query.toLowerCase() + "%");
+        }
+
+        if (by.contains("title")) {
+            conditions.add("LOWER(f.name) LIKE ?");
+            params.add("%" + query.toLowerCase() + "%");
+        }
+
+        if (conditions.isEmpty()) {
+            throw new ValidationException("Необходимо указать поиск: director или title");
+        }
+
+        sql.append("WHERE ")
+                .append(String.join(" OR ", conditions))
+                .append(" ");
+
+        sql.append("GROUP BY f.id, f.name, f.description, f.release_date, ")
+                .append("f.duration, f.mpa_id, m.name ")
+                .append("ORDER BY COUNT(DISTINCT fl.user_id) DESC, f.id");
+        List<Film> films = jdbc.query(sql.toString(), mapper, params.toArray());
+
+        loadDirectors(films);
+        loadGenresForFilms(films);
         return films;
     }
 
