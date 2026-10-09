@@ -7,8 +7,10 @@ import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Director;
+import ru.yandex.practicum.filmorate.model.EventType;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Genre;
+import ru.yandex.practicum.filmorate.model.Operation;
 import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
@@ -33,18 +35,21 @@ public class FilmService {
     private final MpaService mpaService;
     private final GenreService genreService;
     private final DirectorService directorService;
+    private final FeedService feedService;
 
     @Autowired
     public FilmService(@Qualifier("filmDbStorage") FilmStorage filmStorage,
                        @Qualifier("userDbStorage") UserStorage userStorage,
                        MpaService mpaService,
                        GenreService genreService,
-                       DirectorService directorService) {
+                       DirectorService directorService,
+                       FeedService feedService) {
         this.filmStorage = filmStorage;
         this.userStorage = userStorage;
         this.mpaService = mpaService;
         this.genreService = genreService;
         this.directorService = directorService;
+        this.feedService = feedService;
     }
 
     // Получение фильма по id с проверкой существования
@@ -64,6 +69,7 @@ public class FilmService {
         getUserOrThrow(userId); // проверка существования пользователя — иначе 404
 
         filmStorage.addLike(filmId, userId);
+        feedService.addEvent(userId, EventType.LIKE, Operation.ADD, filmId);
         log.debug("Пользователь id={} поставил лайк фильму id={}", userId, filmId);
         return film;
     }
@@ -78,6 +84,7 @@ public class FilmService {
             );
         }
 
+        feedService.addEvent(userId, EventType.LIKE, Operation.REMOVE, filmId);
         log.debug("Пользователь id={} убрал лайк с фильма id={}", userId, filmId);
         return film;
     }
