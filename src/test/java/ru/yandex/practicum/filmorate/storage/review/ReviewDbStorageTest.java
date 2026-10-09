@@ -10,10 +10,7 @@ import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Review;
 import ru.yandex.practicum.filmorate.model.User;
 import ru.yandex.practicum.filmorate.storage.film.FilmDbStorage;
-import ru.yandex.practicum.filmorate.storage.mapper.FilmRowMapper;
-import ru.yandex.practicum.filmorate.storage.mapper.GenreRowMapper;
-import ru.yandex.practicum.filmorate.storage.mapper.ReviewRowMapper;
-import ru.yandex.practicum.filmorate.storage.mapper.UserRowMapper;
+import ru.yandex.practicum.filmorate.storage.mapper.*;
 import ru.yandex.practicum.filmorate.storage.user.UserDbStorage;
 
 import java.time.LocalDate;
@@ -24,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @JdbcTest
 @AutoConfigureTestDatabase
 @Import({ReviewDbStorage.class, ReviewRowMapper.class, FilmDbStorage.class, FilmRowMapper.class,
-        GenreRowMapper.class, UserDbStorage.class, UserRowMapper.class})
+        GenreRowMapper.class, UserDbStorage.class, UserRowMapper.class, DirectorRowMapper.class})
 class ReviewDbStorageTest {
 
     private final ReviewDbStorage reviewStorage;
