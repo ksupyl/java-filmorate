@@ -15,7 +15,8 @@
 - Хранение данных в базе H2 (файловый режим — данные переживают перезапуск),
   доступ через `JdbcTemplate` и `RowMapper`.
 - Справочники жанров и рейтингов MPA в базе, эндпоинты `/genres` и `/mpa`.
-- У фильма есть рейтинг и список жанров; жанры в ответе — без дублей, по порядку id.
+- У фильма есть рейтинг и список жанров; жанры в ответе — без дублей, по порядку id. 
+- У фильмов можно указывать режиссёров и получать список фильмов выбранного режиссёра с сортировкой по году выпуска или количеству лайков.
 - Односторонняя дружба: добавление/удаление друзей, список друзей, общие друзья.
 - Лайки фильмам: добавление/удаление, топ-N фильмов по количеству лайков.
 - Отзывы к фильмам: положительные и негативные, с рейтингом полезности по лайкам и дизлайкам.
@@ -71,6 +72,10 @@
 - `DELETE /films/{id}` — удалить фильм; связанные с ним записи удаляются каскадно.
 - `PUT /films/{id}/like/{userId}` — поставить лайк фильму.
 - `DELETE /films/{id}/like/{userId}` — убрать лайк.
+- `GET /films/popular?count={count}` — топ-N фильмов по лайкам (по умолчанию 10).
+- `GET /films/director/{directorId}` — получить список фильмов режиссёра.
+- `GET /films/director/{directorId}?sortBy=likes` — получить список фильмов режиссёра, отсортированный по лайкам.
+- `GET /films/director/{directorId}?sortBy=year` — получить список фильмов режиссёра, отсортированный по году выпуска.
 - `GET /films/popular?count={count}&genreId={genreId}&year={year}` — топ-N фильмов по лайкам
   (по умолчанию 10); жанр и год — необязательные фильтры.
 - `GET /films/common?userId={userId}&friendId={friendId}` — общие фильмы двух пользователей,
@@ -107,6 +112,13 @@
 - `GET /mpa` — получить список всех рейтингов.
 - `GET /mpa/{id}` — получить рейтинг по ID.
 
+## Режиссёры (`/directors`)
+- `GET /directors` — получить список всех режиссёров.
+- `GET /directors/{id}` — получить режиссёра по ID.
+- `POST /directors` — создать нового режиссёра.
+- `PUT /directors` — обновить данные режиссёра.
+- `DELETE /directors/{id}` — удалить режиссёра.
+
 ## Схема базы данных
 
 ```mermaid
@@ -118,6 +130,8 @@ erDiagram
     users ||--o{ film_likes : "user_id"
     users ||--o{ friendship : "user_id"
     users ||--o{ friendship : "friend_id"
+    films ||--o{film_director : "film_id"
+    directors ||--o{film_director : "director_id"
     users ||--o{ reviews : "user_id"
     films ||--o{ reviews : "film_id"
     reviews ||--o{ review_likes : "review_id"
@@ -158,6 +172,14 @@ erDiagram
         BIGINT user_id PK, FK
         BIGINT friend_id PK, FK
     }
+    directors {
+        BIGINT id PK
+        VARCHAR name
+    }
+    film_director {
+        BIGINT film_id  PK, FK
+        BIGINT director_id PK, FK
+    }
     reviews {
         BIGINT id PK
         VARCHAR content
@@ -181,6 +203,8 @@ erDiagram
 | `film_genres` | связь «фильм — жанр», многие ко многим |
 | `film_likes` | лайки: какой пользователь лайкнул какой фильм |
 | `friendship` | дружба: одна строка — `user_id` добавил в друзья `friend_id`; подтверждённая (взаимная) дружба — две встречные строки |
+| `directors` | режиссёры |
+| `film_director` | связь "фильм — режиссёр", многие ко многим |
 | `reviews` | отзывы пользователей к фильмам; рейтинг полезности не хранится, а считается по `review_likes` |
 | `review_likes` | оценки отзывов: одна строка — один пользователь, лайк или дизлайк |
 
