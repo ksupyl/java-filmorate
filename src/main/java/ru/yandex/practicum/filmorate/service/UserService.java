@@ -6,20 +6,26 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
+import ru.yandex.practicum.filmorate.model.Event;
+import ru.yandex.practicum.filmorate.model.EventType;
+import ru.yandex.practicum.filmorate.model.Operation;
 import ru.yandex.practicum.filmorate.model.User;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
 import java.util.Collection;
+import java.util.List;
 
 @Service
 @Slf4j
 public class UserService {
 
     private final UserStorage userStorage;
+    private final FeedService feedService;
 
     @Autowired
-    public UserService(@Qualifier("userDbStorage") UserStorage userStorage) {
+    public UserService(@Qualifier("userDbStorage") UserStorage userStorage, FeedService feedService) {
         this.userStorage = userStorage;
+        this.feedService = feedService;
     }
 
     private void validateDifferentUsers(long userId, long otherId) {
@@ -44,6 +50,7 @@ public class UserService {
         getUserOrThrow(friendId); // проверка существования друга — иначе 404
 
         userStorage.addFriend(userId, friendId);
+        feedService.addEvent(userId, EventType.FRIEND, Operation.ADD, friendId);
         log.debug("Пользователь id={} добавил в друзья id={}", userId, friendId);
         return user;
     }
@@ -55,6 +62,7 @@ public class UserService {
         getUserOrThrow(friendId); // проверка существования друга — иначе 404
 
         userStorage.removeFriend(userId, friendId);
+        feedService.addEvent(userId, EventType.FRIEND, Operation.REMOVE, friendId);
         log.debug("Пользователь id={} удалил из друзей id={}", userId, friendId);
         return user;
     }
@@ -70,6 +78,11 @@ public class UserService {
         getUserOrThrow(userId);
         getUserOrThrow(otherId);
         return userStorage.findCommonFriends(userId, otherId);
+    }
+
+    public List<Event> getFeed(long userId) {
+        getUserOrThrow(userId);
+        return feedService.findByUserId(userId);
     }
 
     // Логин не может содержать пробелы
