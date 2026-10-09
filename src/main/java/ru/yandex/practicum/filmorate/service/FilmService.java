@@ -15,6 +15,7 @@ import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Service
@@ -187,5 +188,24 @@ public class FilmService {
     public Collection<Film> findByDirectorSorted(long directorId, String sortBy) {
         directorService.getDirectorById(directorId); // проверка существования режиссёра — иначе 404
         return filmStorage.findFilmByDirector(directorId, sortBy);
+    }
+
+    private void validateSearchParameters(String query, List<String> by) {
+        if (query == null || query.isBlank()) {
+            throw new ValidationException("Параметр 'query' не может быть пустым");
+        }
+        if (by == null || by.isEmpty()) {
+            throw new ValidationException("Параметр 'by' не может быть пустым");
+        }
+        for (String field : by) {
+            if (field == null || !field.equalsIgnoreCase("title") && !field.equalsIgnoreCase("director")) {
+                throw new ValidationException("Недопустимое значение в параметре 'by': " + field);
+            }
+        }
+    }
+
+    public Collection<Film> searchFilms(String query, List<String> by) {
+        validateSearchParameters(query, by);
+        return filmStorage.searchFilms(query, by);
     }
 }

@@ -27,4 +27,6 @@ public interface FilmStorage {
     boolean removeLike(long filmId, long userId);
 
     List<Film> findFilmByDirector(long directorId, String sortBy);
+
+    List<Film> searchFilms(String query, List<String> by);
 }
