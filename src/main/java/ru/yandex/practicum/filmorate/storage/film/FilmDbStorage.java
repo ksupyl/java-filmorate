@@ -254,8 +254,9 @@ public class FilmDbStorage implements FilmStorage {
         params.add(userId); // исключаем фильмы, которые уже лайкнул наш пользователь
 
         List<Film> films = jdbc.query(sql, mapper, params.toArray());
-        // Жанры подтягиваются тем же путём, что и у остальных списочных запросов
+        // Жанры и режиссёры подтягиваются тем же путём, что и у остальных списочных запросов
         loadGenresForFilms(films);
+        loadDirectors(films);
         return films;
     }
 

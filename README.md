@@ -20,8 +20,9 @@
 - Односторонняя дружба: добавление/удаление друзей, список друзей, общие друзья.
 - Лайки фильмам: добавление/удаление, топ-N фильмов по количеству лайков.
 - Отзывы к фильмам: положительные и негативные, с рейтингом полезности по лайкам и дизлайкам.
-- Рекомендации фильмов: пользователю предлагаются фильмы, которые лайкнул пользователь
-  с максимальным пересечением по лайкам.
+- Рекомендации фильмов: пользователю предлагаются фильмы, которые лайкнули
+  пользователи с максимальным пересечением по лайкам (при равенстве — все
+  такие пользователи).
 - Лента событий пользователя: лайки, друзья и отзывы.
 - Слоистая архитектура: контроллер → сервис → хранилище, выбор реализации хранилища через `@Qualifier`.
 - Внедрение зависимостей через конструктор (`@Autowired`).
@@ -272,26 +273,33 @@ JOIN friendship f2 ON u.id = f2.friend_id AND f2.user_id = 2
 ORDER BY u.id;
 ```
 
-Рекомендации для пользователя с id = 1: фильмы самого похожего пользователя,
-которых нет у нашего:
+Рекомендации для пользователя с id = 1: фильмы всех пользователей
+с максимальным пересечением по лайкам, которых нет у нашего:
 
 ```sql
--- Шаг 1: самый похожий по пересечению лайков
-SELECT fl2.user_id, COUNT(*) AS common
-FROM film_likes fl1
+-- Шаг 1: максимальное пересечение лайков с любым другим пользователем
+SELECT MAX(common) AS max_common FROM (
+    SELECT COUNT(*) AS common FROM film_likes fl1
+    JOIN film_likes fl2 ON fl1.film_id = fl2.film_id
+    WHERE fl1.user_id = 1 AND fl2.user_id <> 1
+    GROUP BY fl2.user_id
+) t;
+
+-- Шаг 2: все пользователи, у которых пересечение равно максимуму
+SELECT fl2.user_id AS other_id FROM film_likes fl1
 JOIN film_likes fl2 ON fl1.film_id = fl2.film_id
 WHERE fl1.user_id = 1 AND fl2.user_id <> 1
 GROUP BY fl2.user_id
-ORDER BY common DESC, fl2.user_id
-LIMIT 1;
+HAVING COUNT(*) = <max_common>;
 
--- Шаг 2: его фильмы, которых нет у пользователя 1
+-- Шаг 3: их фильмы, которых нет у пользователя 1
 SELECT f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name AS mpa_name
 FROM films f
 JOIN film_likes fl ON f.id = fl.film_id
 LEFT JOIN mpa m ON f.mpa_id = m.id
-WHERE fl.user_id = <similar_user_id>
+WHERE fl.user_id IN (<similar_user_ids>)
   AND f.id NOT IN (SELECT film_id FROM film_likes WHERE user_id = 1)
+GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name
 ORDER BY f.id;
 ```
 
@@ -372,8 +380,10 @@ API доведён до соответствия REST.
 - Отзывы: таблицы `reviews` и `review_likes`; рейтинг полезности считается в SQL
   через `SUM(CASE WHEN is_useful THEN 1 ELSE -1 END)`.
 - Режиссёры: таблицы `directors` и `film_director`, у фильма — список режиссёров.
-- Рекомендации фильмов: два SQL-запроса — поиск самого похожего пользователя
-  по пересечению лайков и его фильмы, которых нет у пользователя.
+- Рекомендации фильмов: находим всех пользователей с максимальным пересечением
+  по лайкам и возвращаем их фильмы, которых нет у нашего.
+  Запрос фильмов живёт в FilmDbStorage, поэтому жанры и режиссёры
+  в ответе подтягиваются тем же путём, что и у остальных списочных запросов.
 - Все хранилища покрыты интеграционными тестами (`@JdbcTest`).
 
 </details>
