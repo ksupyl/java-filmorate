@@ -6,9 +6,12 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.context.annotation.Import;
 import ru.yandex.practicum.filmorate.model.Film;
+import ru.yandex.practicum.filmorate.model.Director;
 import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.model.Mpa;
 import ru.yandex.practicum.filmorate.model.User;
+import ru.yandex.practicum.filmorate.storage.director.DirectorDbStorage;
+import ru.yandex.practicum.filmorate.storage.mapper.DirectorRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.FilmRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.GenreRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.UserRowMapper;
@@ -23,16 +26,19 @@ import static org.junit.jupiter.api.Assertions.*;
 @JdbcTest
 @AutoConfigureTestDatabase
 @Import({FilmDbStorage.class, FilmRowMapper.class, GenreRowMapper.class,
-        UserDbStorage.class, UserRowMapper.class})
+        UserDbStorage.class, UserRowMapper.class,
+        DirectorDbStorage.class, DirectorRowMapper.class})
 class FilmDbStorageTest {
 
     private final FilmDbStorage filmStorage;
     private final UserDbStorage userStorage;
+    private final DirectorDbStorage directorStorage;
 
     @Autowired
-    FilmDbStorageTest(FilmDbStorage filmStorage, UserDbStorage userStorage) {
+    FilmDbStorageTest(FilmDbStorage filmStorage, UserDbStorage userStorage, DirectorDbStorage directorStorage) {
         this.filmStorage = filmStorage;
         this.userStorage = userStorage;
+        this.directorStorage = directorStorage;
     }
 
     // Фильм без рейтинга и жанров: тесты добавляют их сами, где нужно
@@ -72,6 +78,12 @@ class FilmDbStorageTest {
 
     private static List<String> genreNames(Film film) {
         return film.getGenres().stream().map(Genre::getName).toList();
+    }
+
+    private Director createDirector(String directorName) {
+        Director director = new Director();
+        director.setName(directorName);
+        return director;
     }
 
     @Test
@@ -336,5 +348,47 @@ class FilmDbStorageTest {
         // Оба фильма от похожих пользователей, порядок по id
         assertEquals(List.of(second.getId(), third.getId()),
                 recommendations.stream().map(Film::getId).toList());
+    @Test
+    void shouldReturnAllFilmsByDirectorSortedByLikes() {
+        Director director = createDirector("Christopher Nolan");
+        directorStorage.addDirector(director);
+        Film film1 = newFilm("Фильм 1");
+        film1.getDirectors().add(director);
+        film1 = filmStorage.add(film1);
+        Film film2 = newFilm("Фильм 2");
+        film2.getDirectors().add(director);
+        film2 = filmStorage.add(film2);
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        filmStorage.addLike(film1.getId(), anna.getId());
+        filmStorage.addLike(film2.getId(), anna.getId());
+        filmStorage.addLike(film2.getId(), boris.getId());
+
+        List<Film> allFilms = filmStorage.findFilmByDirector(director.getId(), "likes");
+        assertEquals(2, allFilms.size());
+        assertEquals(film2.getId(), allFilms.get(0).getId());
+        assertEquals(film1.getId(), allFilms.get(1).getId());
+    }
+
+    @Test
+    void shouldReturnAllFilmsByDirectorSortedByYear() {
+        Director director = createDirector("Steven Spielberg");
+        directorStorage.addDirector(director);
+        Film film1 = newFilm("Фильм 1");
+        film1.setReleaseDate(LocalDate.of(2000, 1, 1));
+        film1.getDirectors().add(director);
+        film1 = filmStorage.add(film1);
+        Film film2 = newFilm("Фильм 2");
+        film2.setReleaseDate(LocalDate.of(2010, 1, 1));
+        film2.getDirectors().add(director);
+        film2 = filmStorage.add(film2);
+        Film film3 = newFilm("Фильм 3");
+        film3.setReleaseDate(LocalDate.of(2005, 1, 1));
+        film3.getDirectors().add(director);
+        film3 = filmStorage.add(film3);
+        List<Film> allFilms = filmStorage.findFilmByDirector(director.getId(), "year");
+        assertEquals(film1.getId(), allFilms.get(0).getId());
+        assertEquals(film3.getId(), allFilms.get(1).getId());
+        assertEquals(film2.getId(), allFilms.get(2).getId());
     }
 }

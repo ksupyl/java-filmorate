@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
+import ru.yandex.practicum.filmorate.model.EventType;
+import ru.yandex.practicum.filmorate.model.Operation;
 import ru.yandex.practicum.filmorate.model.Review;
 import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
 import ru.yandex.practicum.filmorate.storage.review.ReviewStorage;
@@ -20,14 +22,17 @@ public class ReviewService {
     private final ReviewStorage reviewStorage;
     private final FilmStorage filmStorage;
     private final UserStorage userStorage;
+    private final FeedService feedService;
 
     @Autowired
     public ReviewService(ReviewStorage reviewStorage,
                          @Qualifier("filmDbStorage") FilmStorage filmStorage,
-                         @Qualifier("userDbStorage") UserStorage userStorage) {
+                         @Qualifier("userDbStorage") UserStorage userStorage,
+                         FeedService feedService) {
         this.reviewStorage = reviewStorage;
         this.filmStorage = filmStorage;
         this.userStorage = userStorage;
+        this.feedService = feedService;
     }
 
     private Review getReviewOrThrow(long id) {
@@ -49,6 +54,7 @@ public class ReviewService {
         checkUserExists(review.getUserId());
         checkFilmExists(review.getFilmId());
         Review created = reviewStorage.add(review);
+        feedService.addEvent(created.getUserId(), EventType.REVIEW, Operation.ADD, created.getReviewId());
         log.debug("Пользователь id={} оставил отзыв id={} к фильму id={}",
                 created.getUserId(), created.getReviewId(), created.getFilmId());
         return created;
@@ -60,12 +66,15 @@ public class ReviewService {
             throw new ValidationException("Не указан id отзыва");
         }
         getReviewOrThrow(review.getReviewId());
-        return reviewStorage.update(review);
+        Review updated = reviewStorage.update(review);
+        feedService.addEvent(updated.getUserId(), EventType.REVIEW, Operation.UPDATE, updated.getReviewId());
+        return updated;
     }
 
     public void delete(long id) {
-        getReviewOrThrow(id);
+        Review review = getReviewOrThrow(id);
         reviewStorage.delete(id);
+        feedService.addEvent(review.getUserId(), EventType.REVIEW, Operation.REMOVE, id);
         log.debug("Отзыв id={} удалён", id);
     }
 

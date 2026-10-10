@@ -6,8 +6,11 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
+import ru.yandex.practicum.filmorate.exception.ValidationException;
+import ru.yandex.practicum.filmorate.model.Director;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Genre;
+import ru.yandex.practicum.filmorate.storage.mapper.DirectorRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.FilmRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.GenreRowMapper;
 
@@ -76,6 +79,31 @@ public class FilmDbStorage implements FilmStorage {
             "MERGE INTO film_likes (film_id, user_id) KEY (film_id, user_id) VALUES (?, ?)";
     private static final String REMOVE_LIKE_QUERY =
             "DELETE FROM film_likes WHERE film_id = ? AND user_id = ?";
+    private static final String INSERT_FILM_DIRECTOR_QUERY =
+            "INSERT INTO film_director (film_id, director_id) VALUES (?, ?)";
+    private static final String DELETE_DIRECTOR_FILM_QUERY =
+            "DELETE FROM film_director WHERE film_id = ?";
+    private static final String FIND_DIRECTORS_BY_FILM_QUERY =
+            "SELECT d.id, d.name FROM film_director fd "
+                    + "JOIN directors d ON fd.director_id = d.id "
+                    + "WHERE fd.film_id = ? "
+                    + "ORDER BY d.id";
+    private static final String FIND_DIRECTORS_BY_FILMS_QUERY =
+            "SELECT fd.film_id, d.id, d.name " +
+                    "FROM film_director fd " +
+                    "JOIN directors d ON fd.director_id = d.id " +
+                    "WHERE fd.film_id IN (%s) " +
+                    "ORDER BY fd.film_id, d.id";
+    private static final String FIND_DIRECTORS_BY_LIKES_AND_YEAR =
+            "SELECT f.id, f.name, f.description, f.release_date, f.duration, " +
+            "f.mpa_id, m.name AS mpa_name " +
+            "FROM films f " +
+            "JOIN film_director fd ON f.id = fd.film_id " +
+            "LEFT JOIN mpa m ON f.mpa_id = m.id " +
+            "LEFT JOIN film_likes fl ON f.id = fl.film_id " +
+            "WHERE fd.director_id = ? " +
+            "GROUP BY f.id, f.name, f.description, f.release_date, " +
+            "f.duration, f.mpa_id, m.name ";
 
     // Рекомендации: максимум пересечений по лайкам среди всех пользователей
     private static final String FIND_MAX_OVERLAP_QUERY =
@@ -103,12 +131,14 @@ public class FilmDbStorage implements FilmStorage {
     private final JdbcTemplate jdbc;
     private final FilmRowMapper mapper;
     private final GenreRowMapper genreMapper;
+    private final DirectorRowMapper directorMapper;
 
     @Autowired
-    public FilmDbStorage(JdbcTemplate jdbc, FilmRowMapper mapper, GenreRowMapper genreMapper) {
+    public FilmDbStorage(JdbcTemplate jdbc, FilmRowMapper mapper, GenreRowMapper genreMapper, DirectorRowMapper directorMapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.genreMapper = genreMapper;
+        this.directorMapper = directorMapper;
     }
 
     @Override
@@ -126,6 +156,7 @@ public class FilmDbStorage implements FilmStorage {
 
         Long id = keyHolder.getKeyAs(Long.class);
         saveGenres(id, film.getGenres());
+        saveDirector(id, film.getDirectors());
         // Перечитываем из базы: так в ответе будут названия рейтинга и жанров, а не только их id
         return findById(id).orElseThrow();
     }
@@ -135,6 +166,7 @@ public class FilmDbStorage implements FilmStorage {
         jdbc.update(UPDATE_QUERY, film.getName(), film.getDescription(), Date.valueOf(film.getReleaseDate()),
                 film.getDuration(), getMpaId(film), film.getId());
         saveGenres(film.getId(), film.getGenres());
+        saveDirector(film.getId(), film.getDirectors());
         return findById(film.getId()).orElseThrow();
     }
 
@@ -150,6 +182,7 @@ public class FilmDbStorage implements FilmStorage {
     public Collection<Film> findAll() {
         List<Film> films = jdbc.query(FIND_ALL_QUERY, mapper);
         loadGenresForFilms(films);
+        loadDirectors(films);
         return films;
     }
 
@@ -157,6 +190,7 @@ public class FilmDbStorage implements FilmStorage {
     public Optional<Film> findById(long id) {
         Optional<Film> film = jdbc.query(FIND_BY_ID_QUERY, mapper, id).stream().findFirst();
         film.ifPresent(this::loadGenres);
+        film.ifPresent(this::loadDirectors);
         return film;
     }
 
@@ -179,6 +213,7 @@ public class FilmDbStorage implements FilmStorage {
         String sql = buildPopularQuery(conditions) + LIMIT_CLAUSE;
         List<Film> films = jdbc.query(sql, mapper, params.toArray());
         loadGenresForFilms(films);
+        loadDirectors(films);
         return films;
     }
 
@@ -188,6 +223,7 @@ public class FilmDbStorage implements FilmStorage {
         String sql = buildPopularQuery(List.of(LIKED_BY_USER_FILTER, LIKED_BY_USER_FILTER));
         List<Film> films = jdbc.query(sql, mapper, userId, friendId);
         loadGenresForFilms(films);
+        loadDirectors(films);
         return films;
     }
 
@@ -234,7 +270,30 @@ public class FilmDbStorage implements FilmStorage {
         return jdbc.update(REMOVE_LIKE_QUERY, filmId, userId) > 0;
     }
 
-    // Собирает запрос: чтение + WHERE по условиям + сортировка по числу лайков, без LIMIT
+    @Override
+    public List<Film> findFilmByDirector(long directorId, String sortBy) {
+        String orderBy;
+
+        if ("year".equals(sortBy)) {
+            orderBy = "ORDER BY f.release_date ASC, f.id";
+        } else if ("likes".equals(sortBy)) {
+            orderBy = "ORDER BY COUNT(fl.user_id) DESC, f.id";
+        } else {
+            throw new ValidationException(
+                    "Неизвестный тип сортировки: " + sortBy
+            );
+        }
+
+        List<Film> films = jdbc.query(FIND_DIRECTORS_BY_LIKES_AND_YEAR + orderBy, mapper, directorId
+        );
+
+        loadDirectors(films);
+        loadGenresForFilms(films);
+
+        return films;
+    }
+
+    //Собирает запрос: чтение + WHERE по условиям + сортировка по числу лайков, без LIMIT
     private String buildPopularQuery(List<String> conditions) {
         StringBuilder sql = new StringBuilder(FIND_POPULAR_BASE_QUERY);
         if (!conditions.isEmpty()) {
@@ -280,5 +339,48 @@ public class FilmDbStorage implements FilmStorage {
             Film film = filmsById.get(rs.getLong("film_id"));
             film.getGenres().add(genreMapper.mapRow(rs, rs.getRow()));
         }, filmsById.keySet().toArray());
+    }
+
+    // Директора одного фильма
+    private void loadDirectors(Film film) {
+        film.getDirectors().addAll(jdbc.query(FIND_DIRECTORS_BY_FILM_QUERY, directorMapper, film.getId()));
+    }
+
+    private void loadDirectors(List<Film> films) {
+        if (films.isEmpty()) {
+            return; // фильмов нет — запрос не нужен
+        }
+        Map<Long, Film> filmsById = new HashMap<>();
+        for (Film film : films) {
+            filmsById.put(film.getId(), film);
+        }
+        String placeholders = String.join(
+                ", ",
+                Collections.nCopies(filmsById.size(), "?")
+        );
+
+        String query = String.format(
+                FIND_DIRECTORS_BY_FILMS_QUERY,
+                placeholders
+        );
+
+        jdbc.query(query, rs -> {
+            Film film = filmsById.get(rs.getLong("film_id"));
+            film.getDirectors().add(directorMapper.mapRow(rs, rs.getRow())
+            );
+        }, filmsById.keySet().toArray());
+    }
+
+    // Заменяет директоров фильма: старые связи удаляются, новые вставляются одним пакетом
+    private void saveDirector(long filmId, Set<Director> directors) {
+        jdbc.update(DELETE_DIRECTOR_FILM_QUERY, filmId);
+        if (directors == null || directors.isEmpty()) {
+            return;
+        }
+        List<Object[]> rows = new ArrayList<>();
+        for (Director director : directors) {
+            rows.add(new Object[]{filmId, director.getId()});
+        }
+        jdbc.batchUpdate(INSERT_FILM_DIRECTOR_QUERY, rows);
     }
 }

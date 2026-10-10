@@ -38,6 +38,8 @@ public class Film {
     @JsonIgnore
     private Set<Long> likes = new HashSet<>();
 
+    private Set<Director> directors = new LinkedHashSet<>();
+
     public void addLike(Long userId) {
         likes.add(userId);
     }
@@ -45,4 +47,5 @@ public class Film {
     public boolean removeLike(Long userId) {
         return likes.remove(userId);
     }
+
 }
