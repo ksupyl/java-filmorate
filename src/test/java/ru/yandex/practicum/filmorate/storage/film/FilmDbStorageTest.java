@@ -348,6 +348,8 @@ class FilmDbStorageTest {
         // Оба фильма от похожих пользователей, порядок по id
         assertEquals(List.of(second.getId(), third.getId()),
                 recommendations.stream().map(Film::getId).toList());
+    }
+
     @Test
     void shouldReturnAllFilmsByDirectorSortedByLikes() {
         Director director = createDirector("Christopher Nolan");
