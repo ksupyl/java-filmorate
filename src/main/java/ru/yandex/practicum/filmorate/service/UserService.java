@@ -8,8 +8,10 @@ import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Event;
 import ru.yandex.practicum.filmorate.model.EventType;
+import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Operation;
 import ru.yandex.practicum.filmorate.model.User;
+import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
 import java.util.Collection;
@@ -20,11 +22,15 @@ import java.util.List;
 public class UserService {
 
     private final UserStorage userStorage;
+    private final FilmStorage filmStorage;
     private final FeedService feedService;
 
     @Autowired
-    public UserService(@Qualifier("userDbStorage") UserStorage userStorage, FeedService feedService) {
+    public UserService(@Qualifier("userDbStorage") UserStorage userStorage,
+                       @Qualifier("filmDbStorage") FilmStorage filmStorage,
+                       FeedService feedService) {
         this.userStorage = userStorage;
+        this.filmStorage = filmStorage;
         this.feedService = feedService;
     }
 
@@ -127,5 +133,10 @@ public class UserService {
 
     public User findById(long id) {
         return getUserOrThrow(id);
+    }
+
+    public Collection<Film> getRecommendations(long userId) {
+        getUserOrThrow(userId);
+        return filmStorage.findRecommendations(userId);
     }
 }
