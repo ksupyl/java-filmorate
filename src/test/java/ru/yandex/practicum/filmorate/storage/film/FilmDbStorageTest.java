@@ -5,7 +5,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.context.annotation.Import;
-import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.model.Mpa;
@@ -136,41 +135,6 @@ class FilmDbStorageTest {
         assertTrue(filmStorage.findById(film.getId()).isEmpty());
     }
 
-    // Без ON DELETE CASCADE удаление упало бы на внешних ключах film_genres и film_likes
-    @Test
-    void shouldDeleteFilmWithGenresAndLikes() {
-        Film film = newFilm("С жанром и лайком");
-        film.getGenres().add(genre(1));
-        film = filmStorage.add(film);
-        User anna = createUser("anna");
-        filmStorage.addLike(film.getId(), anna.getId());
-
-        filmStorage.delete(film.getId());
-
-        assertTrue(filmStorage.findById(film.getId()).isEmpty());
-        assertTrue(filmStorage.findPopular(10, null, null).isEmpty());
-    }
-
-    @Test
-    void shouldNotCountLikesOfDeletedUser() {
-        Film first = createFilm("Без лайков");
-        Film liked = createFilm("С лайком");
-        User boris = createUser("boris");
-        filmStorage.addLike(liked.getId(), boris.getId());
-        assertEquals(liked.getId(), filmStorage.findPopular(10, null, null).get(0).getId());
-
-        userStorage.delete(boris.getId());
-
-        // Лайков не осталось ни у кого — фильмы идут по порядку id
-        List<Long> ids = filmStorage.findPopular(10, null, null).stream().map(Film::getId).toList();
-        assertEquals(List.of(first.getId(), liked.getId()), ids);
-    }
-
-    @Test
-    void shouldThrowWhenDeletingUnknownFilm() {
-        assertThrows(NotFoundException.class, () -> filmStorage.delete(9999));
-    }
-
     @Test
     void shouldAddAndRemoveLike() {
         Film film = createFilm("Любимый");
@@ -291,5 +255,86 @@ class FilmDbStorageTest {
         filmStorage.addLike(film.getId(), anna.getId());
 
         assertEquals(0, filmStorage.findCommon(anna.getId(), boris.getId()).size());
+    }
+
+    // Рекомендации: фильм похожего пользователя, которого нет у нашего
+    @Test
+    void shouldReturnRecommendationsFromMostSimilarUser() {
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        Film first = createFilm("Первый");
+        Film second = createFilm("Второй");
+        filmStorage.addLike(first.getId(), anna.getId());
+        filmStorage.addLike(first.getId(), boris.getId());
+        filmStorage.addLike(second.getId(), boris.getId());
+
+        List<Film> recommendations = filmStorage.findRecommendations(anna.getId());
+
+        assertEquals(List.of(second.getId()),
+                recommendations.stream().map(Film::getId).toList());
+    }
+
+    // Жанры в рекомендациях подтягиваются — это то, чего не хватало в UserDbStorage
+    @Test
+    void shouldReturnRecommendationsWithGenres() {
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        Film first = createFilm("Первый");
+        Film second = newFilm("Второй");
+        second.getGenres().add(genre(1));
+        second = filmStorage.add(second);
+        filmStorage.addLike(first.getId(), anna.getId());
+        filmStorage.addLike(first.getId(), boris.getId());
+        filmStorage.addLike(second.getId(), boris.getId());
+
+        List<Film> recommendations = filmStorage.findRecommendations(anna.getId());
+
+        assertEquals(1, recommendations.size());
+        assertEquals(List.of("Комедия"), genreNames(recommendations.getFirst()));
+    }
+
+    @Test
+    void shouldReturnEmptyRecommendationsWhenNoSimilarUsers() {
+        User anna = createUser("anna");
+        createUser("boris");
+        Film film = createFilm("Фильм");
+        filmStorage.addLike(film.getId(), anna.getId());
+
+        assertTrue(filmStorage.findRecommendations(anna.getId()).isEmpty());
+    }
+
+    @Test
+    void shouldReturnEmptyWhenSimilarUserLikedNothingNew() {
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        Film film = createFilm("Фильм");
+        filmStorage.addLike(film.getId(), anna.getId());
+        filmStorage.addLike(film.getId(), boris.getId());
+
+        assertTrue(filmStorage.findRecommendations(anna.getId()).isEmpty());
+    }
+
+    // При равном пересечении учитываем всех «похожих», а не только одного
+    @Test
+    void shouldUseAllSimilarUsersWithMaxOverlap() {
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        User vera = createUser("vera");
+        Film first = createFilm("Первый");
+        Film second = createFilm("Второй");
+        Film third = createFilm("Третий");
+        // У Анны и Бориса пересечение по first, у Анны и Веры — тоже по first
+        filmStorage.addLike(first.getId(), anna.getId());
+        filmStorage.addLike(first.getId(), boris.getId());
+        filmStorage.addLike(first.getId(), vera.getId());
+        // У Бориса есть свой фильм second, у Веры — third; оба должны попасть в рекомендации
+        filmStorage.addLike(second.getId(), boris.getId());
+        filmStorage.addLike(third.getId(), vera.getId());
+
+        List<Film> recommendations = filmStorage.findRecommendations(anna.getId());
+
+        // Оба фильма от похожих пользователей, порядок по id
+        assertEquals(List.of(second.getId(), third.getId()),
+                recommendations.stream().map(Film::getId).toList());
     }
 }

@@ -6,11 +6,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.context.annotation.Import;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
-import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.User;
-import ru.yandex.practicum.filmorate.storage.film.FilmDbStorage;
-import ru.yandex.practicum.filmorate.storage.mapper.FilmRowMapper;
-import ru.yandex.practicum.filmorate.storage.mapper.GenreRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.UserRowMapper;
 
 import java.time.LocalDate;
@@ -19,20 +15,16 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 // Поднимается только база и JdbcTemplate, хранилище и маппер подключаем сами
-// FilmDbStorage нужен для лайков, на которых строятся рекомендации.
 @JdbcTest
 @AutoConfigureTestDatabase
-@Import({UserDbStorage.class, UserRowMapper.class, FilmRowMapper.class,
-        FilmDbStorage.class, GenreRowMapper.class})
+@Import({UserDbStorage.class, UserRowMapper.class})
 class UserDbStorageTest {
 
     private final UserDbStorage userStorage;
-    private final FilmDbStorage filmStorage;
 
     @Autowired
-    UserDbStorageTest(UserDbStorage userStorage, FilmDbStorage filmStorage) {
+    UserDbStorageTest(UserDbStorage userStorage) {
         this.userStorage = userStorage;
-        this.filmStorage = filmStorage;
     }
 
     // Пользователей в тестовой базе нет: создаём сами, id берём из того, что вернул add
@@ -43,19 +35,6 @@ class UserDbStorageTest {
         user.setName("Пользователь " + login);
         user.setBirthday(LocalDate.of(1990, 1, 1));
         return userStorage.add(user);
-    }
-
-    private Film createFilm(String name) {
-        Film film = new Film();
-        film.setName(name);
-        film.setDescription("Описание");
-        film.setReleaseDate(LocalDate.of(2000, 1, 1));
-        film.setDuration(120);
-        return filmStorage.add(film);
-    }
-
-    private void likeFilm(Film film, User user) {
-        filmStorage.addLike(film.getId(), user.getId());
     }
 
     @Test
@@ -152,65 +131,5 @@ class UserDbStorageTest {
         userStorage.addFriend(boris.getId(), common.getId());
 
         assertEquals(List.of(common), userStorage.findCommonFriends(anna.getId(), boris.getId()));
-    }
-
-    @Test
-    void shouldReturnRecommendationsFromMostSimilarUser() {
-        User anna = createUser("anna");
-        User boris = createUser("boris");
-        Film first = createFilm("Первый");
-        Film second = createFilm("Второй");
-        userStorage.addFriend(anna.getId(), boris.getId());
-        likeFilm(first, anna);
-        likeFilm(first, boris);
-        likeFilm(second, boris);
-
-        List<Film> recommendations = userStorage.findRecommendations(anna.getId());
-
-        assertEquals(List.of(second.getId()),
-                recommendations.stream().map(Film::getId).toList());
-    }
-
-    @Test
-    void shouldReturnEmptyRecommendationsWhenNoSimilarUsers() {
-        User anna = createUser("anna");
-        createUser("boris");
-        Film film = createFilm("Фильм");
-        likeFilm(film, anna);
-
-        assertTrue(userStorage.findRecommendations(anna.getId()).isEmpty());
-    }
-
-    @Test
-    void shouldReturnEmptyWhenSimilarUserLikedNothingNew() {
-        User anna = createUser("anna");
-        User boris = createUser("boris");
-        Film film = createFilm("Фильм");
-        likeFilm(film, anna);
-        likeFilm(film, boris);
-
-        assertTrue(userStorage.findRecommendations(anna.getId()).isEmpty());
-    }
-
-    @Test
-    void shouldPickUserWithLargestOverlap() {
-        User anna = createUser("anna");
-        User boris = createUser("boris");
-        User vera = createUser("vera");
-        Film first = createFilm("Первый");
-        Film second = createFilm("Второй");
-        Film third = createFilm("Третий");
-
-        likeFilm(first, anna);
-        likeFilm(second, anna);
-        likeFilm(first, boris);
-        likeFilm(second, boris);
-        likeFilm(third, boris);
-        likeFilm(first, vera);
-
-        List<Film> recommendations = userStorage.findRecommendations(anna.getId());
-
-        assertEquals(List.of(third.getId()),
-                recommendations.stream().map(Film::getId).toList());
     }
 }

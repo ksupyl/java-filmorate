@@ -41,7 +41,7 @@ public class FilmDbStorage implements FilmStorage {
     private static final String FIND_POPULAR_TAIL_QUERY = " "
             + "GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name "
             + "ORDER BY COUNT(fl.user_id) DESC, f.id";
-    // Лимит отдельно: в общих фильмах, поиске и фильмах режиссёра его нет
+    // Лимит отдельно: в общих фильмах, рекомендациях и фильмах режиссёра его нет
     private static final String LIMIT_CLAUSE = " LIMIT ?";
 
     // Условия фильтрации популярных фильмов: по жанру и по году выпуска
@@ -76,6 +76,29 @@ public class FilmDbStorage implements FilmStorage {
             "MERGE INTO film_likes (film_id, user_id) KEY (film_id, user_id) VALUES (?, ?)";
     private static final String REMOVE_LIKE_QUERY =
             "DELETE FROM film_likes WHERE film_id = ? AND user_id = ?";
+
+    // Рекомендации: максимум пересечений по лайкам среди всех пользователей
+    private static final String FIND_MAX_OVERLAP_QUERY =
+            "SELECT MAX(common) AS max_common FROM ("
+                    + "SELECT COUNT(*) AS common FROM film_likes fl1 "
+                    + "JOIN film_likes fl2 ON fl1.film_id = fl2.film_id "
+                    + "WHERE fl1.user_id = ? AND fl2.user_id <> ? "
+                    + "GROUP BY fl2.user_id"
+                    + ") t";
+    // Все пользователи, у которых пересечение равно максимуму
+    private static final String FIND_SIMILAR_USER_IDS_QUERY =
+            "SELECT fl2.user_id AS other_id FROM film_likes fl1 "
+                    + "JOIN film_likes fl2 ON fl1.film_id = fl2.film_id "
+                    + "WHERE fl1.user_id = ? AND fl2.user_id <> ? "
+                    + "GROUP BY fl2.user_id "
+                    + "HAVING COUNT(*) = ?";
+    // Фильмы, которые лайкнули похожие пользователи, но не лайкнул наш.
+    private static final String FIND_RECOMMENDATIONS_QUERY = SELECT_FILMS
+            + "JOIN film_likes fl ON f.id = fl.film_id "
+            + "WHERE fl.user_id IN (%s) "
+            + "AND f.id NOT IN (SELECT film_id FROM film_likes WHERE user_id = ?) "
+            + "GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name "
+            + "ORDER BY f.id";
 
     private final JdbcTemplate jdbc;
     private final FilmRowMapper mapper;
@@ -164,6 +187,38 @@ public class FilmDbStorage implements FilmStorage {
         // Одно и то же условие дважды, с разными id: фильм лайкнули оба
         String sql = buildPopularQuery(List.of(LIKED_BY_USER_FILTER, LIKED_BY_USER_FILTER));
         List<Film> films = jdbc.query(sql, mapper, userId, friendId);
+        loadGenresForFilms(films);
+        return films;
+    }
+
+    @Override
+    public List<Film> findRecommendations(long userId) {
+        Integer maxOverlap = jdbc.queryForObject(
+                FIND_MAX_OVERLAP_QUERY,
+                Integer.class,
+                userId, userId
+        );
+        if (maxOverlap == null) {
+            return List.of();
+        }
+
+        List<Long> similarUserIds = jdbc.query(
+                FIND_SIMILAR_USER_IDS_QUERY,
+                (rs, rowNum) -> rs.getLong("other_id"),
+                userId, userId, maxOverlap
+        );
+        if (similarUserIds.isEmpty()) {
+            return List.of();
+        }
+
+        String placeholders = String.join(", ", Collections.nCopies(similarUserIds.size(), "?"));
+        String sql = String.format(FIND_RECOMMENDATIONS_QUERY, placeholders);
+
+        List<Object> params = new ArrayList<>(similarUserIds);
+        params.add(userId); // исключаем фильмы, которые уже лайкнул наш пользователь
+
+        List<Film> films = jdbc.query(sql, mapper, params.toArray());
+        // Жанры подтягиваются тем же путём, что и у остальных списочных запросов
         loadGenresForFilms(films);
         return films;
     }
