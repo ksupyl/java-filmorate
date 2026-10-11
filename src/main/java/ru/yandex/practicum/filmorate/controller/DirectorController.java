@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import ru.yandex.practicum.filmorate.model.Director;
 import ru.yandex.practicum.filmorate.service.DirectorService;
+
 import java.util.List;
 
 @Slf4j
@@ -27,7 +28,7 @@ public class DirectorController {
     }
 
     @GetMapping("/{id}")
-    public Director getDirectorById(@PathVariable Long id) {
+    public Director getDirectorById(@PathVariable long id) {
         log.info("GET /directors/{}", id);
         return directorService.getDirectorById(id);
     }
@@ -45,9 +46,8 @@ public class DirectorController {
     }
 
     @DeleteMapping("/{id}")
-    public void deleteDirector(@PathVariable Long id) {
+    public void deleteDirector(@PathVariable long id) {
         log.info("DELETE /directors/{}", id);
         directorService.deleteDirector(id);
     }
-
 }
