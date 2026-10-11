@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Event;
@@ -48,7 +49,9 @@ public class UserService {
                 .orElseThrow(() -> new NotFoundException("Пользователь с id=" + id + " не найден"));
     }
 
-    // Дружба односторонняя: обратная запись для friendId не создаётся
+    // Дружба односторонняя: обратная запись для friendId не создаётся.
+    // Дружба и событие в ленте пишутся вместе: либо оба, либо ни одного
+    @Transactional
     public User addFriend(long userId, long friendId) {
         validateDifferentUsers(userId, friendId);
 
@@ -61,6 +64,7 @@ public class UserService {
         return user;
     }
 
+    @Transactional
     public User removeFriend(long userId, long friendId) {
         validateDifferentUsers(userId, friendId);
 
@@ -114,6 +118,9 @@ public class UserService {
     }
 
     public User update(User user) {
+        if (user.getId() == null) {
+            throw new ValidationException("Не указан id пользователя");
+        }
         getUserOrThrow(user.getId());
 
         validateLogin(user);

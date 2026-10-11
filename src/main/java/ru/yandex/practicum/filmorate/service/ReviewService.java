@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.EventType;
@@ -50,6 +51,8 @@ public class ReviewService {
                 .orElseThrow(() -> new NotFoundException("Фильм с id=" + id + " не найден"));
     }
 
+    // Отзыв и событие в ленте пишутся вместе: либо оба, либо ни одного
+    @Transactional
     public Review add(Review review) {
         checkUserExists(review.getUserId());
         checkFilmExists(review.getFilmId());
@@ -61,6 +64,7 @@ public class ReviewService {
     }
 
     // Автор, фильм и рейтинг полезности не меняются — только текст и тип отзыва
+    @Transactional
     public Review update(Review review) {
         if (review.getReviewId() == null) {
             throw new ValidationException("Не указан id отзыва");
@@ -71,6 +75,7 @@ public class ReviewService {
         return updated;
     }
 
+    @Transactional
     public void delete(long id) {
         Review review = getReviewOrThrow(id);
         reviewStorage.delete(id);
