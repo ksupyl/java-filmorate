@@ -4,16 +4,22 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
+import ru.yandex.practicum.filmorate.model.Director;
+import ru.yandex.practicum.filmorate.model.EventType;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Genre;
+import ru.yandex.practicum.filmorate.model.Operation;
 import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 @Service
@@ -30,16 +36,22 @@ public class FilmService {
     // Нужны для проверки рейтинга и жанра из запроса
     private final MpaService mpaService;
     private final GenreService genreService;
+    private final DirectorService directorService;
+    private final FeedService feedService;
 
     @Autowired
     public FilmService(@Qualifier("filmDbStorage") FilmStorage filmStorage,
                        @Qualifier("userDbStorage") UserStorage userStorage,
                        MpaService mpaService,
-                       GenreService genreService) {
+                       GenreService genreService,
+                       DirectorService directorService,
+                       FeedService feedService) {
         this.filmStorage = filmStorage;
         this.userStorage = userStorage;
         this.mpaService = mpaService;
         this.genreService = genreService;
+        this.directorService = directorService;
+        this.feedService = feedService;
     }
 
     // Получение фильма по id с проверкой существования
@@ -54,15 +66,19 @@ public class FilmService {
                 .orElseThrow(() -> new NotFoundException("Пользователь с id=" + id + " не найден"));
     }
 
+    // Лайк и событие в ленте пишутся вместе: либо оба, либо ни одного
+    @Transactional
     public Film addLike(long filmId, long userId) {
         Film film = getFilmOrThrow(filmId);
         getUserOrThrow(userId); // проверка существования пользователя — иначе 404
 
         filmStorage.addLike(filmId, userId);
+        feedService.addEvent(userId, EventType.LIKE, Operation.ADD, filmId);
         log.debug("Пользователь id={} поставил лайк фильму id={}", userId, filmId);
         return film;
     }
 
+    @Transactional
     public Film removeLike(long filmId, long userId) {
         Film film = getFilmOrThrow(filmId);
         getUserOrThrow(userId); // проверка существования пользователя — иначе 404
@@ -73,18 +89,36 @@ public class FilmService {
             );
         }
 
+        feedService.addEvent(userId, EventType.LIKE, Operation.REMOVE, filmId);
         log.debug("Пользователь id={} убрал лайк с фильма id={}", userId, filmId);
         return film;
     }
 
-    public Collection<Film> getPopular(int count) {
+    public Collection<Film> getPopular(int count, Integer genreId, Integer year) {
         // Валидация: count должен быть положительным числом
         if (count <= 0) {
             throw new ValidationException(
                     "Количество фильмов должно быть положительным числом, получено: " + count
             );
         }
-        return filmStorage.findPopular(count);
+        // Жанр, если указан, должен существовать — иначе 404
+        if (genreId != null) {
+            genreService.findById(genreId);
+        }
+        // Валидация: год, если указан, должен быть положительным
+        if (year != null && year <= 0) {
+            throw new ValidationException(
+                    "Год должен быть положительным числом, получено: " + year
+            );
+        }
+        return filmStorage.findPopular(count, genreId, year);
+    }
+
+    // Общие фильмы двух пользователей — те, что лайкнули оба, по убыванию популярности
+    public Collection<Film> getCommon(long userId, long friendId) {
+        getUserOrThrow(userId); // оба пользователя должны существовать — иначе 404
+        getUserOrThrow(friendId);
+        return filmStorage.findCommon(userId, friendId);
     }
 
     // Валидация даты релиза — не может быть раньше дня рождения кино
@@ -100,6 +134,9 @@ public class FilmService {
     // Рейтинг и жанры из запроса должны существовать в справочниках — иначе 404
     private void validateMpaAndGenres(Film film) {
         if (film.getMpa() != null) {
+            if (film.getMpa().getId() == null) {
+                throw new ValidationException("Не указан id рейтинга MPA");
+            }
             mpaService.findById(film.getMpa().getId()); // бросит NotFoundException
         }
         if (film.getGenres() == null || film.getGenres().isEmpty()) {
@@ -111,8 +148,30 @@ public class FilmService {
             knownIds.add(genre.getId());
         }
         for (Genre genre : film.getGenres()) {
+            if (genre.getId() == null) {
+                throw new ValidationException("Не указан id жанра");
+            }
             if (!knownIds.contains(genre.getId())) {
                 throw new NotFoundException("Жанр с id=" + genre.getId() + " не найден");
+            }
+        }
+    }
+
+    // Режиссёры из запроса должны существовать — иначе 404
+    private void validateDirectors(Film film) {
+        if (film.getDirectors() == null || film.getDirectors().isEmpty()) {
+            return;
+        }
+        Set<Long> knownIds = new HashSet<>();
+        for (Director director : directorService.getAllDirectors()) {
+            knownIds.add(director.getId());
+        }
+        for (Director director : film.getDirectors()) {
+            if (director.getId() == null) {
+                throw new ValidationException("Не указан id режиссёра");
+            }
+            if (!knownIds.contains(director.getId())) {
+                throw new NotFoundException("Режиссёр с id=" + director.getId() + " не найден");
             }
         }
     }
@@ -120,14 +179,25 @@ public class FilmService {
     public Film add(Film film) {
         validateReleaseDate(film);
         validateMpaAndGenres(film);
+        validateDirectors(film);
         return filmStorage.add(film);
     }
 
     public Film update(Film film) {
+        if (film.getId() == null) {
+            throw new ValidationException("Не указан id фильма");
+        }
         getFilmOrThrow(film.getId()); // проверка существования — иначе 404
         validateReleaseDate(film);
         validateMpaAndGenres(film);
+        validateDirectors(film);
         return filmStorage.update(film);
+    }
+
+    // Лайки, жанры и прочие связи фильма база удаляет сама — каскадом из schema.sql
+    public void delete(long id) {
+        filmStorage.delete(id); // нет фильма — хранилище бросит NotFoundException, это 404
+        log.debug("Фильм id={} удалён", id);
     }
 
     public Collection<Film> findAll() {
@@ -136,5 +206,36 @@ public class FilmService {
 
     public Film findById(long id) {
         return getFilmOrThrow(id);
+    }
+
+    // Сортировка без учёта регистра: year или likes, остальное — 400
+    public Collection<Film> findByDirectorSorted(long directorId, String sortBy) {
+        String sort = sortBy.toLowerCase(Locale.ROOT);
+        if (!sort.equals("year") && !sort.equals("likes")) {
+            throw new ValidationException("Сортировка возможна только по year или likes, получено: " + sortBy);
+        }
+        directorService.getDirectorById(directorId); // проверка существования режиссёра — иначе 404
+        return filmStorage.findFilmByDirector(directorId, sort);
+    }
+
+    private void validateSearchParameters(String query, List<String> by) {
+        if (query == null || query.isBlank()) {
+            throw new ValidationException("Параметр 'query' не может быть пустым");
+        }
+        if (by == null || by.isEmpty()) {
+            throw new ValidationException("Параметр 'by' не может быть пустым");
+        }
+        for (String field : by) {
+            if (field == null || !field.equalsIgnoreCase("title") && !field.equalsIgnoreCase("director")) {
+                throw new ValidationException("Недопустимое значение в параметре 'by': " + field);
+            }
+        }
+    }
+
+    public Collection<Film> searchFilms(String query, List<String> by) {
+        validateSearchParameters(query, by);
+        // Проверка выше не учитывает регистр, а хранилище ждёт title и director строчными
+        List<String> fields = by.stream().map(field -> field.toLowerCase(Locale.ROOT)).toList();
+        return filmStorage.searchFilms(query, fields);
     }
 }

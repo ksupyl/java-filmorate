@@ -5,23 +5,26 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
+import ru.yandex.practicum.filmorate.model.Director;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Genre;
+import ru.yandex.practicum.filmorate.storage.mapper.DirectorRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.FilmRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.GenreRowMapper;
 
 import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.ArrayList;
-import java.util.Set;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 @Repository
 public class FilmDbStorage implements FilmStorage {
@@ -31,13 +34,30 @@ public class FilmDbStorage implements FilmStorage {
             "SELECT f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name AS mpa_name "
                     + "FROM films f "
                     + "LEFT JOIN mpa m ON f.mpa_id = m.id ";
+    // Группировка по всем колонкам SELECT_FILMS — для запросов с JOIN film_likes:
+    // чтобы посчитать лайки или убрать повторы строк одного фильма
+    private static final String GROUP_BY_FILM =
+            "GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name ";
     private static final String FIND_ALL_QUERY = SELECT_FILMS + "ORDER BY f.id";
     private static final String FIND_BY_ID_QUERY = SELECT_FILMS + "WHERE f.id = ?";
-    private static final String FIND_POPULAR_QUERY = SELECT_FILMS
-            + "LEFT JOIN film_likes fl ON f.id = fl.film_id "
-            + "GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name "
-            + "ORDER BY COUNT(fl.user_id) DESC, f.id "
-            + "LIMIT ?";
+
+    // Базовый запрос для популярных фильмов: WHERE-условия добавляются динамически
+    private static final String FIND_POPULAR_BASE_QUERY = SELECT_FILMS
+            + "LEFT JOIN film_likes fl ON f.id = fl.film_id ";
+    // Хвост запроса популярных фильмов: группировка и сортировка по числу лайков
+    private static final String FIND_POPULAR_TAIL_QUERY = " " + GROUP_BY_FILM
+            + "ORDER BY COUNT(fl.user_id) DESC, f.id";
+    // Лимит отдельно: общие фильмы собираются тем же запросом, что и популярные, но без лимита
+    private static final String LIMIT_CLAUSE = " LIMIT ?";
+
+    // Условия фильтрации популярных фильмов: по жанру и по году выпуска
+    private static final String FIND_POPULAR_GENRE_FILTER =
+            "f.id IN (SELECT film_id FROM film_genres WHERE genre_id = ?)";
+    private static final String FIND_POPULAR_YEAR_FILTER =
+            "YEAR(f.release_date) = ?";
+    private static final String LIKED_BY_USER_FILTER =
+            "f.id IN (SELECT film_id FROM film_likes WHERE user_id = ?)";
+
     private static final String INSERT_QUERY =
             "INSERT INTO films (name, description, release_date, duration, mpa_id) VALUES (?, ?, ?, ?, ?)";
     private static final String UPDATE_QUERY =
@@ -62,19 +82,73 @@ public class FilmDbStorage implements FilmStorage {
             "MERGE INTO film_likes (film_id, user_id) KEY (film_id, user_id) VALUES (?, ?)";
     private static final String REMOVE_LIKE_QUERY =
             "DELETE FROM film_likes WHERE film_id = ? AND user_id = ?";
+    private static final String INSERT_FILM_DIRECTOR_QUERY =
+            "INSERT INTO film_director (film_id, director_id) VALUES (?, ?)";
+    private static final String DELETE_DIRECTOR_FILM_QUERY =
+            "DELETE FROM film_director WHERE film_id = ?";
+    private static final String FIND_DIRECTORS_BY_FILM_QUERY =
+            "SELECT d.id, d.name FROM film_director fd "
+                    + "JOIN directors d ON fd.director_id = d.id "
+                    + "WHERE fd.film_id = ? "
+                    + "ORDER BY d.id";
+    // Режиссёры нескольких фильмов одним запросом — так же, как жанры
+    private static final String FIND_DIRECTORS_BY_FILMS_QUERY =
+            "SELECT fd.film_id, d.id, d.name FROM film_director fd "
+                    + "JOIN directors d ON fd.director_id = d.id "
+                    + "WHERE fd.film_id IN (%s) "
+                    + "ORDER BY fd.film_id, d.id";
+    // Фильмы режиссёра с числом лайков; сортировка добавляется в findFilmByDirector
+    private static final String FIND_FILMS_BY_DIRECTOR_QUERY = SELECT_FILMS
+            + "JOIN film_director fd ON f.id = fd.film_id "
+            + "LEFT JOIN film_likes fl ON f.id = fl.film_id "
+            + "WHERE fd.director_id = ? "
+            + GROUP_BY_FILM;
+    // Поиск: условия по названию и режиссёру добавляются в searchFilms
+    private static final String FIND_FILMS_BY_SEARCH_QUERY = SELECT_FILMS
+            + "LEFT JOIN film_director fd ON f.id = fd.film_id "
+            + "LEFT JOIN directors d ON fd.director_id = d.id "
+            + "LEFT JOIN film_likes fl ON f.id = fl.film_id ";
+
+    // Рекомендации: максимум пересечений по лайкам среди всех пользователей
+    private static final String FIND_MAX_OVERLAP_QUERY =
+            "SELECT MAX(common) AS max_common FROM ("
+                    + "SELECT COUNT(*) AS common FROM film_likes fl1 "
+                    + "JOIN film_likes fl2 ON fl1.film_id = fl2.film_id "
+                    + "WHERE fl1.user_id = ? AND fl2.user_id <> ? "
+                    + "GROUP BY fl2.user_id"
+                    + ") t";
+    // Все пользователи, у которых пересечение равно максимуму
+    private static final String FIND_SIMILAR_USER_IDS_QUERY =
+            "SELECT fl2.user_id AS other_id FROM film_likes fl1 "
+                    + "JOIN film_likes fl2 ON fl1.film_id = fl2.film_id "
+                    + "WHERE fl1.user_id = ? AND fl2.user_id <> ? "
+                    + "GROUP BY fl2.user_id "
+                    + "HAVING COUNT(*) = ?";
+    // Фильмы, которые лайкнули похожие пользователи, но не лайкнул наш.
+    private static final String FIND_RECOMMENDATIONS_QUERY = SELECT_FILMS
+            + "JOIN film_likes fl ON f.id = fl.film_id "
+            + "WHERE fl.user_id IN (%s) "
+            + "AND f.id NOT IN (SELECT film_id FROM film_likes WHERE user_id = ?) "
+            + GROUP_BY_FILM
+            + "ORDER BY f.id";
 
     private final JdbcTemplate jdbc;
     private final FilmRowMapper mapper;
     private final GenreRowMapper genreMapper;
+    private final DirectorRowMapper directorMapper;
 
     @Autowired
-    public FilmDbStorage(JdbcTemplate jdbc, FilmRowMapper mapper, GenreRowMapper genreMapper) {
+    public FilmDbStorage(JdbcTemplate jdbc, FilmRowMapper mapper, GenreRowMapper genreMapper,
+                         DirectorRowMapper directorMapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.genreMapper = genreMapper;
+        this.directorMapper = directorMapper;
     }
 
+    // Фильм, жанры и режиссёры пишутся в три таблицы: либо всё, либо ничего
     @Override
+    @Transactional
     public Film add(Film film) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
@@ -89,15 +163,18 @@ public class FilmDbStorage implements FilmStorage {
 
         Long id = keyHolder.getKeyAs(Long.class);
         saveGenres(id, film.getGenres());
+        saveDirectors(id, film.getDirectors());
         // Перечитываем из базы: так в ответе будут названия рейтинга и жанров, а не только их id
         return findById(id).orElseThrow();
     }
 
     @Override
+    @Transactional
     public Film update(Film film) {
         jdbc.update(UPDATE_QUERY, film.getName(), film.getDescription(), Date.valueOf(film.getReleaseDate()),
                 film.getDuration(), getMpaId(film), film.getId());
         saveGenres(film.getId(), film.getGenres());
+        saveDirectors(film.getId(), film.getDirectors());
         return findById(film.getId()).orElseThrow();
     }
 
@@ -113,6 +190,7 @@ public class FilmDbStorage implements FilmStorage {
     public Collection<Film> findAll() {
         List<Film> films = jdbc.query(FIND_ALL_QUERY, mapper);
         loadGenresForFilms(films);
+        loadDirectorsForFilms(films);
         return films;
     }
 
@@ -120,13 +198,73 @@ public class FilmDbStorage implements FilmStorage {
     public Optional<Film> findById(long id) {
         Optional<Film> film = jdbc.query(FIND_BY_ID_QUERY, mapper, id).stream().findFirst();
         film.ifPresent(this::loadGenres);
+        film.ifPresent(this::loadDirectors);
         return film;
     }
 
     @Override
-    public List<Film> findPopular(int count) {
-        List<Film> films = jdbc.query(FIND_POPULAR_QUERY, mapper, count);
+    public List<Film> findPopular(int count, Integer genreId, Integer year) {
+        List<String> conditions = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+
+        if (genreId != null) {
+            // Подзапрос вместо JOIN: иначе фильм с несколькими жанрами задвоит строки
+            conditions.add(FIND_POPULAR_GENRE_FILTER);
+            params.add(genreId);
+        }
+        if (year != null) {
+            conditions.add(FIND_POPULAR_YEAR_FILTER);
+            params.add(year);
+        }
+        params.add(count); // LIMIT всегда последний
+
+        String sql = buildPopularQuery(conditions) + LIMIT_CLAUSE;
+        List<Film> films = jdbc.query(sql, mapper, params.toArray());
         loadGenresForFilms(films);
+        loadDirectorsForFilms(films);
+        return films;
+    }
+
+    @Override
+    public List<Film> findCommon(long userId, long friendId) {
+        // Одно и то же условие дважды, с разными id: фильм лайкнули оба
+        String sql = buildPopularQuery(List.of(LIKED_BY_USER_FILTER, LIKED_BY_USER_FILTER));
+        List<Film> films = jdbc.query(sql, mapper, userId, friendId);
+        loadGenresForFilms(films);
+        loadDirectorsForFilms(films);
+        return films;
+    }
+
+    @Override
+    public List<Film> findRecommendations(long userId) {
+        Integer maxOverlap = jdbc.queryForObject(
+                FIND_MAX_OVERLAP_QUERY,
+                Integer.class,
+                userId, userId
+        );
+        if (maxOverlap == null) {
+            return List.of();
+        }
+
+        List<Long> similarUserIds = jdbc.query(
+                FIND_SIMILAR_USER_IDS_QUERY,
+                (rs, rowNum) -> rs.getLong("other_id"),
+                userId, userId, maxOverlap
+        );
+        if (similarUserIds.isEmpty()) {
+            return List.of();
+        }
+
+        String placeholders = String.join(", ", Collections.nCopies(similarUserIds.size(), "?"));
+        String sql = String.format(FIND_RECOMMENDATIONS_QUERY, placeholders);
+
+        List<Object> params = new ArrayList<>(similarUserIds);
+        params.add(userId); // исключаем фильмы, которые уже лайкнул наш пользователь
+
+        List<Film> films = jdbc.query(sql, mapper, params.toArray());
+        // Жанры и режиссёры подтягиваются тем же путём, что и у остальных списочных запросов
+        loadGenresForFilms(films);
+        loadDirectorsForFilms(films);
         return films;
     }
 
@@ -139,6 +277,57 @@ public class FilmDbStorage implements FilmStorage {
     public boolean removeLike(long filmId, long userId) {
         // update возвращает число удалённых строк: 0 — лайка не было
         return jdbc.update(REMOVE_LIKE_QUERY, filmId, userId) > 0;
+    }
+
+    // sortBy уже проверен в сервисе: year или likes
+    @Override
+    public List<Film> findFilmByDirector(long directorId, String sortBy) {
+        String orderBy = "year".equals(sortBy)
+                ? "ORDER BY f.release_date, f.id"
+                : "ORDER BY COUNT(fl.user_id) DESC, f.id";
+        List<Film> films = jdbc.query(FIND_FILMS_BY_DIRECTOR_QUERY + orderBy, mapper, directorId);
+        loadGenresForFilms(films);
+        loadDirectorsForFilms(films);
+        return films;
+    }
+
+    // by уже проверен в сервисе: title и/или director, строчными
+    @Override
+    public List<Film> searchFilms(String query, List<String> by) {
+        List<String> conditions = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        String pattern = "%" + query.toLowerCase() + "%";
+
+        if (by.contains("director")) {
+            conditions.add("LOWER(d.name) LIKE ?");
+            params.add(pattern);
+        }
+        if (by.contains("title")) {
+            conditions.add("LOWER(f.name) LIKE ?");
+            params.add(pattern);
+        }
+        if (conditions.isEmpty()) {
+            throw new IllegalArgumentException("Не указано, где искать: title или director");
+        }
+
+        // DISTINCT: у фильма с двумя режиссёрами каждый лайк иначе посчитается дважды
+        String sql = FIND_FILMS_BY_SEARCH_QUERY
+                + "WHERE " + String.join(" OR ", conditions) + " "
+                + GROUP_BY_FILM
+                + "ORDER BY COUNT(DISTINCT fl.user_id) DESC, f.id";
+        List<Film> films = jdbc.query(sql, mapper, params.toArray());
+        loadGenresForFilms(films);
+        loadDirectorsForFilms(films);
+        return films;
+    }
+
+    // Собирает запрос: чтение + WHERE по условиям + сортировка по числу лайков, без LIMIT
+    private String buildPopularQuery(List<String> conditions) {
+        StringBuilder sql = new StringBuilder(FIND_POPULAR_BASE_QUERY);
+        if (!conditions.isEmpty()) {
+            sql.append("WHERE ").append(String.join(" AND ", conditions)).append(" ");
+        }
+        return sql.append(FIND_POPULAR_TAIL_QUERY).toString();
     }
 
     // Рейтинга может не быть — тогда в колонку mpa_id уходит NULL
@@ -178,5 +367,39 @@ public class FilmDbStorage implements FilmStorage {
             Film film = filmsById.get(rs.getLong("film_id"));
             film.getGenres().add(genreMapper.mapRow(rs, rs.getRow()));
         }, filmsById.keySet().toArray());
+    }
+
+    // Режиссёры одного фильма
+    private void loadDirectors(Film film) {
+        film.getDirectors().addAll(jdbc.query(FIND_DIRECTORS_BY_FILM_QUERY, directorMapper, film.getId()));
+    }
+
+    // Режиссёры списка фильмов: один запрос только по этим фильмам, раскладываем через Map
+    private void loadDirectorsForFilms(List<Film> films) {
+        if (films.isEmpty()) {
+            return; // фильмов нет — запрос не нужен
+        }
+        Map<Long, Film> filmsById = new HashMap<>();
+        for (Film film : films) {
+            filmsById.put(film.getId(), film);
+        }
+        String placeholders = String.join(", ", Collections.nCopies(filmsById.size(), "?"));
+        jdbc.query(String.format(FIND_DIRECTORS_BY_FILMS_QUERY, placeholders), rs -> {
+            Film film = filmsById.get(rs.getLong("film_id"));
+            film.getDirectors().add(directorMapper.mapRow(rs, rs.getRow()));
+        }, filmsById.keySet().toArray());
+    }
+
+    // Заменяет режиссёров фильма: старые связи удаляются, новые вставляются одним пакетом
+    private void saveDirectors(long filmId, Set<Director> directors) {
+        jdbc.update(DELETE_DIRECTOR_FILM_QUERY, filmId);
+        if (directors == null || directors.isEmpty()) {
+            return;
+        }
+        List<Object[]> rows = new ArrayList<>();
+        for (Director director : directors) {
+            rows.add(new Object[]{filmId, director.getId()});
+        }
+        jdbc.batchUpdate(INSERT_FILM_DIRECTOR_QUERY, rows);
     }
 }

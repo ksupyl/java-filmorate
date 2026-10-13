@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.context.annotation.Import;
+import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.model.User;
 import ru.yandex.practicum.filmorate.storage.mapper.UserRowMapper;
 
@@ -78,6 +79,25 @@ class UserDbStorageTest {
         userStorage.delete(user.getId());
 
         assertTrue(userStorage.findById(user.getId()).isEmpty());
+    }
+
+    // Без ON DELETE CASCADE удаление упало бы на внешнем ключе friendship
+    @Test
+    void shouldDeleteUserWithFriendships() {
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        userStorage.addFriend(anna.getId(), boris.getId());
+        userStorage.addFriend(boris.getId(), anna.getId());
+
+        userStorage.delete(boris.getId());
+
+        assertTrue(userStorage.findById(boris.getId()).isEmpty());
+        assertTrue(userStorage.findFriends(anna.getId()).isEmpty());
+    }
+
+    @Test
+    void shouldThrowWhenDeletingUnknownUser() {
+        assertThrows(NotFoundException.class, () -> userStorage.delete(9999));
     }
 
     @Test

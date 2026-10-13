@@ -5,10 +5,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.context.annotation.Import;
+import ru.yandex.practicum.filmorate.exception.NotFoundException;
+import ru.yandex.practicum.filmorate.model.Director;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.model.Mpa;
 import ru.yandex.practicum.filmorate.model.User;
+import ru.yandex.practicum.filmorate.storage.director.DirectorDbStorage;
+import ru.yandex.practicum.filmorate.storage.mapper.DirectorRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.FilmRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.GenreRowMapper;
 import ru.yandex.practicum.filmorate.storage.mapper.UserRowMapper;
@@ -23,16 +27,19 @@ import static org.junit.jupiter.api.Assertions.*;
 @JdbcTest
 @AutoConfigureTestDatabase
 @Import({FilmDbStorage.class, FilmRowMapper.class, GenreRowMapper.class,
-        UserDbStorage.class, UserRowMapper.class})
+        UserDbStorage.class, UserRowMapper.class,
+        DirectorDbStorage.class, DirectorRowMapper.class})
 class FilmDbStorageTest {
 
     private final FilmDbStorage filmStorage;
     private final UserDbStorage userStorage;
+    private final DirectorDbStorage directorStorage;
 
     @Autowired
-    FilmDbStorageTest(FilmDbStorage filmStorage, UserDbStorage userStorage) {
+    FilmDbStorageTest(FilmDbStorage filmStorage, UserDbStorage userStorage, DirectorDbStorage directorStorage) {
         this.filmStorage = filmStorage;
         this.userStorage = userStorage;
+        this.directorStorage = directorStorage;
     }
 
     // Фильм без рейтинга и жанров: тесты добавляют их сами, где нужно
@@ -72,6 +79,12 @@ class FilmDbStorageTest {
 
     private static List<String> genreNames(Film film) {
         return film.getGenres().stream().map(Genre::getName).toList();
+    }
+
+    private Director createDirector(String directorName) {
+        Director director = new Director();
+        director.setName(directorName);
+        return director;
     }
 
     @Test
@@ -135,6 +148,41 @@ class FilmDbStorageTest {
         assertTrue(filmStorage.findById(film.getId()).isEmpty());
     }
 
+    // Без ON DELETE CASCADE удаление упало бы на внешних ключах film_genres и film_likes
+    @Test
+    void shouldDeleteFilmWithGenresAndLikes() {
+        Film film = newFilm("С жанром и лайком");
+        film.getGenres().add(genre(1));
+        film = filmStorage.add(film);
+        User anna = createUser("anna");
+        filmStorage.addLike(film.getId(), anna.getId());
+
+        filmStorage.delete(film.getId());
+
+        assertTrue(filmStorage.findById(film.getId()).isEmpty());
+        assertTrue(filmStorage.findPopular(10, null, null).isEmpty());
+    }
+
+    @Test
+    void shouldNotCountLikesOfDeletedUser() {
+        Film first = createFilm("Без лайков");
+        Film liked = createFilm("С лайком");
+        User boris = createUser("boris");
+        filmStorage.addLike(liked.getId(), boris.getId());
+        assertEquals(liked.getId(), filmStorage.findPopular(10, null, null).get(0).getId());
+
+        userStorage.delete(boris.getId());
+
+        // Лайков не осталось ни у кого — фильмы идут по порядку id
+        List<Long> ids = filmStorage.findPopular(10, null, null).stream().map(Film::getId).toList();
+        assertEquals(List.of(first.getId(), liked.getId()), ids);
+    }
+
+    @Test
+    void shouldThrowWhenDeletingUnknownFilm() {
+        assertThrows(NotFoundException.class, () -> filmStorage.delete(9999));
+    }
+
     @Test
     void shouldAddAndRemoveLike() {
         Film film = createFilm("Любимый");
@@ -158,10 +206,268 @@ class FilmDbStorageTest {
         filmStorage.addLike(second.getId(), boris.getId());
         filmStorage.addLike(first.getId(), anna.getId());
 
-        List<Film> popular = filmStorage.findPopular(10);
+        List<Film> popular = filmStorage.findPopular(10, null, null);
 
         assertEquals(List.of(second.getId(), first.getId(), third.getId()),
                 popular.stream().map(Film::getId).toList());
-        assertEquals(2, filmStorage.findPopular(2).size());
+        assertEquals(2, filmStorage.findPopular(2, null, null).size());
+    }
+
+    @Test
+    void shouldFilterPopularByGenre() {
+        Film comedy = createFilm("Комедия");
+        comedy.getGenres().add(genre(1));
+        filmStorage.update(comedy);
+        Film drama = createFilm("Драма");
+        drama.getGenres().add(genre(2));
+        filmStorage.update(drama);
+        User anna = createUser("anna");
+        filmStorage.addLike(comedy.getId(), anna.getId());
+        filmStorage.addLike(drama.getId(), anna.getId());
+
+        List<Film> popular = filmStorage.findPopular(10, 1, null);
+
+        assertEquals(List.of(comedy.getId()), popular.stream().map(Film::getId).toList());
+    }
+
+    @Test
+    void shouldFilterPopularByYear() {
+        Film old = createFilm("Старый");
+        Film fresh = newFilm("Новый");
+        fresh.setReleaseDate(LocalDate.of(2020, 1, 1));
+        fresh = filmStorage.add(fresh);
+        User anna = createUser("anna");
+        filmStorage.addLike(old.getId(), anna.getId());
+        filmStorage.addLike(fresh.getId(), anna.getId());
+
+        List<Film> popular = filmStorage.findPopular(10, null, 2000);
+
+        assertEquals(List.of(old.getId()), popular.stream().map(Film::getId).toList());
+    }
+
+    @Test
+    void shouldFilterPopularByGenreAndYear() {
+        Film comedy2000 = newFilm("Комедия 2000");
+        comedy2000.getGenres().add(genre(1));
+        comedy2000 = filmStorage.add(comedy2000);
+        Film comedy2020 = newFilm("Комедия 2020");
+        comedy2020.setReleaseDate(LocalDate.of(2020, 1, 1));
+        comedy2020.getGenres().add(genre(1));
+        comedy2020 = filmStorage.add(comedy2020);
+        User anna = createUser("anna");
+        filmStorage.addLike(comedy2000.getId(), anna.getId());
+        filmStorage.addLike(comedy2020.getId(), anna.getId());
+
+        List<Film> popular = filmStorage.findPopular(10, 1, 2000);
+
+        assertEquals(List.of(comedy2000.getId()), popular.stream().map(Film::getId).toList());
+    }
+
+    @Test
+    void shouldReturnAllPopularWhenFiltersAreNull() {
+        Film film = createFilm("Один");
+        User anna = createUser("anna");
+        filmStorage.addLike(film.getId(), anna.getId());
+
+        assertEquals(1, filmStorage.findPopular(10, null, null).size());
+    }
+
+    @Test
+    void shouldFindCommonFilmsSortedByPopularity() {
+        Film first = createFilm("Первый");
+        Film second = createFilm("Второй");
+        Film onlyAnna = createFilm("Только Анны");
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        User vera = createUser("vera");
+        // Оба лайкнули первый и второй; у второго есть ещё лайк Веры — он популярнее
+        filmStorage.addLike(first.getId(), anna.getId());
+        filmStorage.addLike(first.getId(), boris.getId());
+        filmStorage.addLike(second.getId(), anna.getId());
+        filmStorage.addLike(second.getId(), boris.getId());
+        filmStorage.addLike(second.getId(), vera.getId());
+        // Этот лайкнула только Анна — в общие не попадает
+        filmStorage.addLike(onlyAnna.getId(), anna.getId());
+
+        List<Film> common = filmStorage.findCommon(anna.getId(), boris.getId());
+
+        assertEquals(List.of(second.getId(), first.getId()),
+                common.stream().map(Film::getId).toList());
+    }
+
+    @Test
+    void shouldReturnEmptyCommonFilmsWhenNoSharedLikes() {
+        Film film = createFilm("Один");
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        filmStorage.addLike(film.getId(), anna.getId());
+
+        assertEquals(0, filmStorage.findCommon(anna.getId(), boris.getId()).size());
+    }
+
+    // Рекомендации: фильм похожего пользователя, которого нет у нашего
+    @Test
+    void shouldReturnRecommendationsFromMostSimilarUser() {
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        Film first = createFilm("Первый");
+        Film second = createFilm("Второй");
+        filmStorage.addLike(first.getId(), anna.getId());
+        filmStorage.addLike(first.getId(), boris.getId());
+        filmStorage.addLike(second.getId(), boris.getId());
+
+        List<Film> recommendations = filmStorage.findRecommendations(anna.getId());
+
+        assertEquals(List.of(second.getId()),
+                recommendations.stream().map(Film::getId).toList());
+    }
+
+    // Жанры в рекомендациях подтягиваются — это то, чего не хватало в UserDbStorage
+    @Test
+    void shouldReturnRecommendationsWithGenres() {
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        Film first = createFilm("Первый");
+        Film second = newFilm("Второй");
+        second.getGenres().add(genre(1));
+        second = filmStorage.add(second);
+        filmStorage.addLike(first.getId(), anna.getId());
+        filmStorage.addLike(first.getId(), boris.getId());
+        filmStorage.addLike(second.getId(), boris.getId());
+
+        List<Film> recommendations = filmStorage.findRecommendations(anna.getId());
+
+        assertEquals(1, recommendations.size());
+        assertEquals(List.of("Комедия"), genreNames(recommendations.getFirst()));
+    }
+
+    @Test
+    void shouldReturnEmptyRecommendationsWhenNoSimilarUsers() {
+        User anna = createUser("anna");
+        createUser("boris");
+        Film film = createFilm("Фильм");
+        filmStorage.addLike(film.getId(), anna.getId());
+
+        assertTrue(filmStorage.findRecommendations(anna.getId()).isEmpty());
+    }
+
+    @Test
+    void shouldReturnEmptyWhenSimilarUserLikedNothingNew() {
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        Film film = createFilm("Фильм");
+        filmStorage.addLike(film.getId(), anna.getId());
+        filmStorage.addLike(film.getId(), boris.getId());
+
+        assertTrue(filmStorage.findRecommendations(anna.getId()).isEmpty());
+    }
+
+    // При равном пересечении учитываем всех «похожих», а не только одного
+    @Test
+    void shouldUseAllSimilarUsersWithMaxOverlap() {
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        User vera = createUser("vera");
+        Film first = createFilm("Первый");
+        Film second = createFilm("Второй");
+        Film third = createFilm("Третий");
+        // У Анны и Бориса пересечение по first, у Анны и Веры — тоже по first
+        filmStorage.addLike(first.getId(), anna.getId());
+        filmStorage.addLike(first.getId(), boris.getId());
+        filmStorage.addLike(first.getId(), vera.getId());
+        // У Бориса есть свой фильм second, у Веры — third; оба должны попасть в рекомендации
+        filmStorage.addLike(second.getId(), boris.getId());
+        filmStorage.addLike(third.getId(), vera.getId());
+
+        List<Film> recommendations = filmStorage.findRecommendations(anna.getId());
+
+        // Оба фильма от похожих пользователей, порядок по id
+        assertEquals(List.of(second.getId(), third.getId()),
+                recommendations.stream().map(Film::getId).toList());
+    }
+
+    @Test
+    void shouldReturnAllFilmsByDirectorSortedByLikes() {
+        Director director = createDirector("Christopher Nolan");
+        directorStorage.addDirector(director);
+        Film film1 = newFilm("Фильм 1");
+        film1.getDirectors().add(director);
+        film1 = filmStorage.add(film1);
+        Film film2 = newFilm("Фильм 2");
+        film2.getDirectors().add(director);
+        film2 = filmStorage.add(film2);
+        User anna = createUser("anna");
+        User boris = createUser("boris");
+        filmStorage.addLike(film1.getId(), anna.getId());
+        filmStorage.addLike(film2.getId(), anna.getId());
+        filmStorage.addLike(film2.getId(), boris.getId());
+
+        List<Film> allFilms = filmStorage.findFilmByDirector(director.getId(), "likes");
+        assertEquals(2, allFilms.size());
+        assertEquals(film2.getId(), allFilms.get(0).getId());
+        assertEquals(film1.getId(), allFilms.get(1).getId());
+    }
+
+    @Test
+    void shouldReturnAllFilmsByDirectorSortedByYear() {
+        Director director = createDirector("Steven Spielberg");
+        directorStorage.addDirector(director);
+        Film film1 = newFilm("Фильм 1");
+        film1.setReleaseDate(LocalDate.of(2000, 1, 1));
+        film1.getDirectors().add(director);
+        film1 = filmStorage.add(film1);
+        Film film2 = newFilm("Фильм 2");
+        film2.setReleaseDate(LocalDate.of(2010, 1, 1));
+        film2.getDirectors().add(director);
+        film2 = filmStorage.add(film2);
+        Film film3 = newFilm("Фильм 3");
+        film3.setReleaseDate(LocalDate.of(2005, 1, 1));
+        film3.getDirectors().add(director);
+        film3 = filmStorage.add(film3);
+        List<Film> allFilms = filmStorage.findFilmByDirector(director.getId(), "year");
+        assertEquals(film1.getId(), allFilms.get(0).getId());
+        assertEquals(film3.getId(), allFilms.get(1).getId());
+        assertEquals(film2.getId(), allFilms.get(2).getId());
+    }
+
+    @Test
+    void searchFilmByTitle() {
+        Film film = newFilm("Интерстеллар");
+        film.setReleaseDate(LocalDate.of(2000, 1, 1));
+        film = filmStorage.add(film);
+        List<Film> foundFilms = filmStorage.searchFilms("инт",  List.of("title"));
+        assertEquals(1, foundFilms.size());
+        assertEquals(film.getId(), foundFilms.get(0).getId());
+        assertEquals("Интерстеллар", foundFilms.get(0).getName());
+    }
+
+    @Test
+    void searchFilmByDirector() {
+        Director director = createDirector("Кристофер Нолан");
+        directorStorage.addDirector(director);
+        Film film = newFilm("Начало");
+        film.getDirectors().add(director);
+        film = filmStorage.add(film);
+        List<Film> foundFilms = filmStorage.searchFilms("нол",  List.of("director"));
+        assertEquals(1, foundFilms.size());
+        assertEquals(film.getId(), foundFilms.get(0).getId());
+        assertEquals("Начало", foundFilms.get(0).getName());
+    }
+
+    @Test
+    void searchFilmByTitleAndDirector() {
+        Director director = createDirector("Кристофер Нолан");
+        directorStorage.addDirector(director);
+        Film film = newFilm("Начало");
+        film.getDirectors().add(director);
+        film = filmStorage.add(film);
+        Long filmId = film.getId();
+        Film film1 = newFilm("Нолан и его фильмы");
+        film1 = filmStorage.add(film1);
+        Long film1Id = film1.getId();
+        List<Film> foundFilms = filmStorage.searchFilms("нол",  List.of("title", "director"));
+        assertEquals(2, foundFilms.size());
+        assertTrue(foundFilms.stream().anyMatch(f -> f.getId().equals(filmId)));
+        assertTrue(foundFilms.stream().anyMatch(f -> f.getId().equals(film1Id)));
     }
 }

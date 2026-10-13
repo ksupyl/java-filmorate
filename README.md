@@ -1,204 +1,20 @@
 # java-filmorate
 
-Учебный backend-проект на Java и Spring Boot: сервис для работы с фильмами,
-оценками пользователей и топом популярных фильмов.
+Учебный backend-проект на Java и Spring Boot: сервис для работы с фильмами, лайками,
+отзывами и рекомендациями. Данные хранятся в реляционной базе H2, доступ к ним — через `JdbcTemplate`.
 
-Проект развивается поэтапно. На текущем этапе данные хранятся в реляционной базе H2,
-доступ к ним — через `JdbcTemplate`, у фильмов появились жанры и возрастной рейтинг MPA.
+## Команда
 
-## Автор
-**Ксения Пылькина** *(Ksenia Pylkina)*
-
-## Ключевые возможности на данном этапе
-
-- CRUD-операции для `Film` и `User` (создание, обновление, получение по ID и списком).
-- Хранение данных в базе H2 (файловый режим — данные переживают перезапуск),
-  доступ через `JdbcTemplate` и `RowMapper`.
-- Справочники жанров и рейтингов MPA в базе, эндпоинты `/genres` и `/mpa`.
-- У фильма есть рейтинг и список жанров; жанры в ответе — без дублей, по порядку id.
-- Односторонняя дружба: добавление/удаление друзей, список друзей, общие друзья.
-- Лайки фильмам: добавление/удаление, топ-N фильмов по количеству лайков.
-- Слоистая архитектура: контроллер → сервис → хранилище, выбор реализации хранилища через `@Qualifier`.
-- Внедрение зависимостей через конструктор (`@Autowired`).
-- Строгая валидация входящих данных через `spring-boot-starter-validation`.
-- Кастомная бизнес-валидация (дата релиза, пробелы в логине, автозамена имени на логин,
-  существование рейтинга и жанров).
-- Централизованная обработка ошибок (`@RestControllerAdvice`): 400, 404, 500.
-- Логирование HTTP-запросов и ответов через Logbook.
-- Unit-тесты бизнес-логики и интеграционные тесты хранилищ (`@JdbcTest`).
-
-## Технологии
-
-- **Java 21**
-- **Spring Boot 3.2.2**
-    - `spring-boot-starter-web` (REST API)
-    - `spring-boot-starter-validation` (валидация данных)
-    - `spring-boot-starter-jdbc` (доступ к базе через `JdbcTemplate`)
-- **H2 Database** (встроенная реляционная база данных)
-- **Logbook 3.7.2** (логирование HTTP-запросов)
-- **Lombok** (генерация boilerplate-кода и логгеров)
-- **JUnit 5**, **Spring Boot Test**, **Mockito** (unit- и интеграционные тесты)
-- **Maven** (сборка проекта)
-- **Checkstyle** (контроль стиля кода)
-
-## Запуск проекта
-
-1. Склонировать репозиторий.
-2. Открыть проект в **IntelliJ IDEA**.
-3. Дождаться загрузки зависимостей Maven.
-4. Запустить метод `main` в классе `FilmorateApplication`.
-
-После запуска сервер будет доступен на порту **8080**.
-
-База данных создаётся автоматически при старте: таблицы — из `schema.sql`,
-справочники жанров и рейтингов — из `data.sql`. Данные хранятся в папке `db`
-в корне проекта. Чтобы начать с чистой базы, остановите приложение и удалите эту папку.
-
-Содержимое базы можно посмотреть в консоли H2: `http://localhost:8080/h2-console`
-(JDBC URL `jdbc:h2:file:./db/filmorate`, пользователь `sa`, пароль `password`).
-
-Для проверки запросов можно использовать **Postman**
-(коллекция `sprint.json` доступна в шаблоне курса).
-
-## Основные HTTP-эндпоинты
-
-### Фильмы (`/films`)
-- `GET /films` — получить список всех фильмов.
-- `GET /films/{id}` — получить фильм по ID.
-- `POST /films` — добавить новый фильм.
-- `PUT /films` — обновить существующий фильм.
-- `PUT /films/{id}/like/{userId}` — поставить лайк фильму.
-- `DELETE /films/{id}/like/{userId}` — убрать лайк.
-- `GET /films/popular?count={count}` — топ-N фильмов по лайкам (по умолчанию 10).
-
-### Пользователи (`/users`)
-- `GET /users` — получить список всех пользователей.
-- `GET /users/{id}` — получить пользователя по ID.
-- `POST /users` — создать нового пользователя.
-- `PUT /users` — обновить данные пользователя.
-- `PUT /users/{id}/friends/{friendId}` — добавить в друзья (дружба односторонняя).
-- `DELETE /users/{id}/friends/{friendId}` — удалить из друзей.
-- `GET /users/{id}/friends` — список друзей пользователя.
-- `GET /users/{id}/friends/common/{otherId}` — общие друзья с другим пользователем.
-
-### Жанры (`/genres`)
-- `GET /genres` — получить список всех жанров.
-- `GET /genres/{id}` — получить жанр по ID.
-
-### Рейтинги MPA (`/mpa`)
-- `GET /mpa` — получить список всех рейтингов.
-- `GET /mpa/{id}` — получить рейтинг по ID.
-
-## Схема базы данных
-
-```mermaid
-erDiagram
-    genres ||--o{ film_genres : "genre_id"
-    films ||--o{ film_genres : "film_id"
-    mpa |o--o{ films : "mpa_id"
-    films ||--o{ film_likes : "film_id"
-    users ||--o{ film_likes : "user_id"
-    users ||--o{ friendship : "user_id"
-    users ||--o{ friendship : "friend_id"
-
-    films {
-        BIGINT id PK
-        VARCHAR name
-        VARCHAR description "до 200 символов"
-        DATE release_date
-        INTEGER duration
-        INTEGER mpa_id FK "может быть NULL"
-    }
-    users {
-        BIGINT id PK
-        VARCHAR email
-        VARCHAR login
-        VARCHAR name
-        DATE birthday
-    }
-    mpa {
-        INTEGER id PK
-        VARCHAR name
-    }
-    genres {
-        INTEGER id PK
-        VARCHAR name
-    }
-    film_genres {
-        BIGINT film_id PK, FK
-        INTEGER genre_id PK, FK
-    }
-    film_likes {
-        BIGINT film_id PK, FK
-        BIGINT user_id PK, FK
-    }
-    friendship {
-        BIGINT user_id PK, FK
-        BIGINT friend_id PK, FK
-    }
-```
-
-| Таблица | Что хранит |
-|---|---|
-| `films` | фильмы; `mpa_id` — ссылка на рейтинг, может быть пустой |
-| `users` | пользователи |
-| `mpa` | справочник рейтингов MPA (5 записей) |
-| `genres` | справочник жанров (6 записей) |
-| `film_genres` | связь «фильм — жанр», многие ко многим |
-| `film_likes` | лайки: какой пользователь лайкнул какой фильм |
-| `friendship` | дружба: одна строка — `user_id` добавил в друзья `friend_id`; подтверждённая (взаимная) дружба — две встречные строки |
-
-У таблиц-связок составной первичный ключ, поэтому одна и та же пара не запишется дважды.
-При удалении фильма или пользователя связанные с ним записи удаляются каскадно.
-
-<details>
-<summary><strong>Примеры запросов</strong></summary>
-
-Топ-10 популярных фильмов: по числу лайков, при равенстве — по id:
-
-```sql
-SELECT f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name AS mpa_name
-FROM films f
-LEFT JOIN mpa m ON f.mpa_id = m.id
-LEFT JOIN film_likes fl ON f.id = fl.film_id
-GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name
-ORDER BY COUNT(fl.user_id) DESC, f.id
-LIMIT 10;
-```
-
-Жанры фильма с id = 1 по порядку id:
-
-```sql
-SELECT g.id, g.name
-FROM film_genres fg
-JOIN genres g ON fg.genre_id = g.id
-WHERE fg.film_id = 1
-ORDER BY g.id;
-```
-
-Друзья пользователя с id = 1 — те, кого он добавил:
-
-```sql
-SELECT u.id, u.email, u.login, u.name, u.birthday
-FROM users u
-JOIN friendship f ON u.id = f.friend_id
-WHERE f.user_id = 1
-ORDER BY u.id;
-```
-
-Общие друзья пользователей с id = 1 и id = 2:
-
-```sql
-SELECT u.id, u.email, u.login, u.name, u.birthday
-FROM users u
-JOIN friendship f1 ON u.id = f1.friend_id AND f1.user_id = 1
-JOIN friendship f2 ON u.id = f2.friend_id AND f2.user_id = 2
-ORDER BY u.id;
-```
-
-</details>
+| Участник | GitHub | Зона ответственности |
+|---|---|---|
+| **Ксения Пылькина** *(тимлид)* | [ksupyl](https://github.com/ksupyl) | этапы 1–3; общие фильмы, удаление фильмов и пользователей |
+| **Кирилл Казанцев** | [Kirill-Kazantcev](https://github.com/Kirill-Kazantcev) | популярные фильмы по жанру и году, рекомендации |
+| **Роман Егоров** | [Roman32-gif](https://github.com/Roman32-gif) | режиссёры, поиск |
+| **Дарья Приндина** | [DariaPrindina](https://github.com/DariaPrindina) | отзывы, лента событий |
 
 ## Реализация по этапам
+
+Этапы 1–3 — индивидуальные спринты, этап 4 — групповой проект, собранный на их основе.
 
 <details>
 <summary><strong>Этап 1 — Каркас Spring Boot приложения и базовый REST API</strong></summary>
@@ -238,7 +54,7 @@ API доведён до соответствия REST.
 
 </details>
 
-<details open>
+<details>
 <summary><strong>Этап 3 — База данных H2, DAO, жанры и рейтинги</strong></summary>
 
 На этом этапе данные переехали из памяти в базу данных,
@@ -252,13 +68,362 @@ API доведён до соответствия REST.
   `GenreDbStorage`, `MpaDbStorage` и мапперы `RowMapper` для каждой сущности.
 - Хранилища жанров и рейтингов, как и остальные, скрыты за интерфейсами (`GenreStorage`, `MpaStorage`).
 - Сервисы переключены на хранилища в базе через `@Qualifier`;
-  in-memory реализации оставлены для unit-тестов.
+  in-memory реализации и их unit-тесты после перехода на базу удалены.
 - Добавлены модели `Genre` и `Mpa`, сервисы и контроллеры `/genres` и `/mpa`.
 - Жанры фильма сохраняются пакетно (`batchUpdate`), а для списка фильмов загружаются одним запросом
   только по этим фильмам (`IN (...)`).
 - Дружба стала односторонней: одна запись в `friendship` — один пользователь добавил другого.
 - Популярные фильмы считаются в SQL: `LEFT JOIN` с лайками, `GROUP BY`, сортировка по числу лайков.
 - При создании и обновлении фильма проверяются рейтинг и жанры: неизвестный id — 404.
-- Интеграционные тесты всех хранилищ (`@JdbcTest`, база в памяти); unit-тесты сервисов обновлены.
+- Интеграционные тесты всех хранилищ (`@JdbcTest`, база в памяти).
+
+</details>
+
+<details>
+<summary><strong>Этап 4 — Групповой проект: восемь новых функций</strong></summary>
+
+Команда из четырёх человек добавила восемь функций. Работали по GitHub Flow: задача на доске
+GitHub Projects, своя ветка на каждую функцию, pull request в `develop`, два апрува от команды
+и Squash and merge. Каждый pull request проверял CI с тестами Postman по своей функции.
+
+**Что сделано:**
+- **Популярные фильмы по жанру и году** *(Кирилл Казанцев)*: фильтры добавляются в `WHERE`
+  динамически; жанр проверяется подзапросом, чтобы фильм с несколькими жанрами не задваивался.
+- **Общие фильмы** *(Ксения Пылькина)*: тот же запрос, что у популярных, с условием
+  «фильм лайкнул пользователь» для каждого из двух id.
+- **Удаление фильмов и пользователей** *(Ксения Пылькина)*: связанные записи — лайки, жанры,
+  дружбу, отзывы, ленту — удаляет база через `ON DELETE CASCADE`.
+- **Режиссёры** *(Роман Егоров)*: таблицы `directors` и `film_director`, у фильма — список режиссёров,
+  фильмы режиссёра сортируются по году выпуска или по лайкам.
+- **Отзывы** *(Дарья Приндина)*: таблицы `reviews` и `review_likes`; рейтинг полезности
+  считается в SQL через `SUM(CASE WHEN is_useful THEN 1 ELSE -1 END)`.
+- **Лента событий** *(Дарья Приндина)*: таблица `feed_events`; событие пишут сервисы лайков,
+  друзей и отзывов в той же транзакции, что и само действие.
+- **Рекомендации** *(Кирилл Казанцев)*: находим всех пользователей с максимальным пересечением
+  по лайкам и возвращаем их фильмы, которых нет у нашего. Запрос фильмов живёт в `FilmDbStorage`,
+  поэтому жанры и режиссёры в ответе подтягиваются тем же путём, что и у остальных списочных запросов.
+- **Поиск** *(Роман Егоров)*: подстрока без учёта регистра в названии и/или имени режиссёра,
+  результаты по убыванию популярности.
+- Перед сдачей: ошибки клиента (нет обязательного параметра, неверный тип, битый JSON,
+  нет id при обновлении) отдают 400 вместо 500, неизвестный адрес — 404; записи в несколько
+  таблиц выполняются в транзакции; обработка ошибок покрыта тестами на `MockMvc`.
+- Все хранилища покрыты интеграционными тестами (`@JdbcTest`).
+
+</details>
+
+## Ключевые возможности
+
+- CRUD-операции для фильмов, пользователей и режиссёров; при удалении фильма или пользователя
+  связанные записи удаляются каскадно.
+- Хранение данных в базе H2 (файловый режим — данные переживают перезапуск),
+  доступ через `JdbcTemplate` и `RowMapper`.
+- Справочники жанров и рейтингов MPA в базе, эндпоинты `/genres` и `/mpa`.
+- У фильма есть рейтинг, список жанров и список режиссёров; в ответе — без дублей, по порядку id.
+- Односторонняя дружба: добавление/удаление друзей, список друзей, общие друзья.
+- Лайки фильмам и топ-N популярных фильмов с фильтрами по жанру и году выпуска.
+- Общие фильмы двух пользователей — те, что лайкнули оба.
+- Фильмы режиссёра с сортировкой по году выпуска или количеству лайков.
+- Поиск фильмов по подстроке в названии и/или имени режиссёра.
+- Отзывы к фильмам: положительные и негативные, с рейтингом полезности по лайкам и дизлайкам.
+- Рекомендации фильмов: пользователю предлагаются фильмы, которые лайкнули
+  пользователи с максимальным пересечением по лайкам (при равенстве — все
+  такие пользователи).
+- Лента событий пользователя: лайки, друзья и отзывы.
+- Слоистая архитектура: контроллер → сервис → хранилище, выбор реализации хранилища через `@Qualifier`.
+- Внедрение зависимостей через конструктор (`@Autowired`).
+- Строгая валидация входящих данных через `spring-boot-starter-validation`.
+- Кастомная бизнес-валидация (дата релиза, пробелы в логине, автозамена имени на логин,
+  существование рейтинга, жанров и режиссёров).
+- Записи сразу в несколько таблиц выполняются в одной транзакции (`@Transactional`).
+- Централизованная обработка ошибок (`@RestControllerAdvice`): ошибки клиента — 400, 404, 405 и 415,
+  непредвиденные — 500 с общим сообщением, подробности только в логе.
+- Логирование HTTP-запросов и ответов через Logbook.
+- Интеграционные тесты хранилищ (`@JdbcTest`), тесты ленты событий и обработки ошибок
+  (`@SpringBootTest`, `MockMvc`).
+
+## Технологии
+
+- **Java 21**
+- **Spring Boot 3.2.2**
+    - `spring-boot-starter-web` (REST API)
+    - `spring-boot-starter-validation` (валидация данных)
+    - `spring-boot-starter-jdbc` (доступ к базе через `JdbcTemplate`)
+- **H2 Database** (встроенная реляционная база данных)
+- **Logbook 3.7.2** (логирование HTTP-запросов)
+- **Lombok** (генерация boilerplate-кода и логгеров)
+- **JUnit 5**, **Spring Boot Test** (`@JdbcTest`, `@SpringBootTest`, `MockMvc`)
+- **Maven** (сборка проекта)
+- **Checkstyle** (контроль стиля кода)
+
+## Запуск проекта
+
+1. Склонировать репозиторий.
+2. Открыть проект в **IntelliJ IDEA**.
+3. Дождаться загрузки зависимостей Maven.
+4. Запустить метод `main` в классе `FilmorateApplication`.
+
+После запуска сервер будет доступен на порту **8080**. Тесты запускаются командой `mvn test`.
+
+База данных создаётся автоматически при старте: таблицы — из `schema.sql`,
+справочники жанров и рейтингов — из `data.sql`. Данные хранятся в папке `db`
+в корне проекта. Чтобы начать с чистой базы, остановите приложение и удалите эту папку.
+
+Содержимое базы можно посмотреть в консоли H2: `http://localhost:8080/h2-console`
+(JDBC URL `jdbc:h2:file:./db/filmorate`, пользователь `sa`, пароль `password`).
+
+Для проверки запросов можно использовать **Postman**
+(коллекция `sprint.json` доступна в шаблоне курса).
+
+## Основные HTTP-эндпоинты
+
+### Фильмы (`/films`)
+- `GET /films` — получить список всех фильмов.
+- `GET /films/{id}` — получить фильм по ID.
+- `POST /films` — добавить новый фильм.
+- `PUT /films` — обновить существующий фильм.
+- `DELETE /films/{id}` — удалить фильм; связанные с ним записи удаляются каскадно.
+- `PUT /films/{id}/like/{userId}` — поставить лайк фильму.
+- `DELETE /films/{id}/like/{userId}` — убрать лайк.
+- `GET /films/popular?count={count}&genreId={genreId}&year={year}` — топ-N фильмов по лайкам
+  (по умолчанию 10); жанр и год — необязательные фильтры.
+- `GET /films/common?userId={userId}&friendId={friendId}` — общие фильмы двух пользователей,
+  по убыванию популярности.
+- `GET /films/director/{directorId}?sortBy={year|likes}` — фильмы режиссёра по году выпуска
+  или по количеству лайков (по умолчанию `likes`).
+- `GET /films/search?query={query}&by={title,director}` — поиск по подстроке без учёта регистра
+  в названии и/или имени режиссёра, по убыванию популярности.
+
+### Пользователи (`/users`)
+- `GET /users` — получить список всех пользователей.
+- `GET /users/{id}` — получить пользователя по ID.
+- `POST /users` — создать нового пользователя.
+- `PUT /users` — обновить данные пользователя.
+- `DELETE /users/{id}` — удалить пользователя; связанные с ним записи удаляются каскадно.
+- `PUT /users/{id}/friends/{friendId}` — добавить в друзья (дружба односторонняя).
+- `DELETE /users/{id}/friends/{friendId}` — удалить из друзей.
+- `GET /users/{id}/friends` — список друзей пользователя.
+- `GET /users/{id}/friends/common/{otherId}` — общие друзья с другим пользователем.
+- `GET /users/{id}/recommendations` — рекомендации фильмов на основе похожих пользователей.
+- `GET /users/{id}/feed` — лента событий пользователя по порядку: лайки (`LIKE`), друзья (`FRIEND`)
+  и отзывы (`REVIEW`) с операциями `ADD`, `REMOVE`, `UPDATE`.
+
+### Отзывы (`/reviews`)
+- `POST /reviews` — добавить отзыв.
+- `PUT /reviews` — изменить текст и тип отзыва.
+- `DELETE /reviews/{id}` — удалить отзыв.
+- `GET /reviews/{id}` — получить отзыв по ID.
+- `GET /reviews?filmId={filmId}&count={count}` — отзывы к фильму (без `filmId` — ко всем),
+  по убыванию полезности; по умолчанию 10.
+- `PUT /reviews/{id}/like/{userId}` — отметить отзыв полезным.
+- `PUT /reviews/{id}/dislike/{userId}` — отметить отзыв бесполезным.
+- `DELETE /reviews/{id}/like/{userId}` — убрать лайк.
+- `DELETE /reviews/{id}/dislike/{userId}` — убрать дизлайк.
+
+### Жанры (`/genres`)
+- `GET /genres` — получить список всех жанров.
+- `GET /genres/{id}` — получить жанр по ID.
+
+### Рейтинги MPA (`/mpa`)
+- `GET /mpa` — получить список всех рейтингов.
+- `GET /mpa/{id}` — получить рейтинг по ID.
+
+### Режиссёры (`/directors`)
+- `GET /directors` — получить список всех режиссёров.
+- `GET /directors/{id}` — получить режиссёра по ID.
+- `POST /directors` — создать нового режиссёра.
+- `PUT /directors` — обновить данные режиссёра.
+- `DELETE /directors/{id}` — удалить режиссёра.
+
+## Схема базы данных
+
+```mermaid
+erDiagram
+    genres ||--o{ film_genres : "genre_id"
+    films ||--o{ film_genres : "film_id"
+    mpa |o--o{ films : "mpa_id"
+    films ||--o{ film_likes : "film_id"
+    users ||--o{ film_likes : "user_id"
+    users ||--o{ friendship : "user_id"
+    users ||--o{ friendship : "friend_id"
+    films ||--o{film_director : "film_id"
+    directors ||--o{film_director : "director_id"
+    users ||--o{ reviews : "user_id"
+    films ||--o{ reviews : "film_id"
+    reviews ||--o{ review_likes : "review_id"
+    users ||--o{ review_likes : "user_id"
+    users ||--o{ feed_events : "user_id"
+
+    films {
+        BIGINT id PK
+        VARCHAR name
+        VARCHAR description "до 200 символов"
+        DATE release_date
+        INTEGER duration
+        INTEGER mpa_id FK "может быть NULL"
+    }
+    users {
+        BIGINT id PK
+        VARCHAR email
+        VARCHAR login
+        VARCHAR name
+        DATE birthday
+    }
+    mpa {
+        INTEGER id PK
+        VARCHAR name
+    }
+    genres {
+        INTEGER id PK
+        VARCHAR name
+    }
+    film_genres {
+        BIGINT film_id PK, FK
+        INTEGER genre_id PK, FK
+    }
+    film_likes {
+        BIGINT film_id PK, FK
+        BIGINT user_id PK, FK
+    }
+    friendship {
+        BIGINT user_id PK, FK
+        BIGINT friend_id PK, FK
+    }
+    directors {
+        BIGINT id PK
+        VARCHAR name
+    }
+    film_director {
+        BIGINT film_id  PK, FK
+        BIGINT director_id PK, FK
+    }
+    reviews {
+        BIGINT id PK
+        VARCHAR content
+        BOOLEAN is_positive
+        BIGINT user_id FK
+        BIGINT film_id FK
+    }
+    review_likes {
+        BIGINT review_id PK, FK
+        BIGINT user_id PK, FK
+        BOOLEAN is_useful "TRUE — лайк, FALSE — дизлайк"
+    }
+    feed_events {
+        BIGINT event_id PK
+        BIGINT user_id FK
+        VARCHAR event_type "LIKE, REVIEW, FRIEND"
+        VARCHAR operation "ADD, REMOVE, UPDATE"
+        BIGINT entity_id "id фильма, друга или отзыва"
+        BIGINT created_at "время события, мс"
+    }
+```
+
+| Таблица | Что хранит |
+|---|---|
+| `films` | фильмы; `mpa_id` — ссылка на рейтинг, может быть пустой |
+| `users` | пользователи |
+| `mpa` | справочник рейтингов MPA (5 записей) |
+| `genres` | справочник жанров (6 записей) |
+| `film_genres` | связь «фильм — жанр», многие ко многим |
+| `film_likes` | лайки: какой пользователь лайкнул какой фильм |
+| `friendship` | дружба: одна строка — `user_id` добавил в друзья `friend_id`; подтверждённая (взаимная) дружба — две встречные строки |
+| `directors` | режиссёры |
+| `film_director` | связь "фильм — режиссёр", многие ко многим |
+| `reviews` | отзывы пользователей к фильмам; рейтинг полезности не хранится, а считается по `review_likes` |
+| `review_likes` | оценки отзывов: одна строка — один пользователь, лайк или дизлайк |
+| `feed_events` | лента: что пользователь лайкнул, кого добавил в друзья, какие отзывы написал |
+
+У таблиц-связок составной первичный ключ, поэтому одна и та же пара не запишется дважды.
+При удалении фильма или пользователя связанные с ним записи удаляются каскадно.
+
+<details>
+<summary><strong>Примеры запросов</strong></summary>
+
+Топ-10 популярных фильмов: по числу лайков, при равенстве — по id:
+
+```sql
+SELECT f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name AS mpa_name
+FROM films f
+LEFT JOIN mpa m ON f.mpa_id = m.id
+LEFT JOIN film_likes fl ON f.id = fl.film_id
+GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name
+ORDER BY COUNT(fl.user_id) DESC, f.id
+LIMIT 10;
+```
+
+Жанры фильма с id = 1 по порядку id:
+
+```sql
+SELECT g.id, g.name
+FROM film_genres fg
+JOIN genres g ON fg.genre_id = g.id
+WHERE fg.film_id = 1
+ORDER BY g.id;
+```
+
+Поиск «нол» по имени режиссёра и названию, по убыванию популярности.
+`COUNT(DISTINCT ...)` — потому что у фильма с двумя режиссёрами каждый лайк иначе посчитался бы дважды:
+
+```sql
+SELECT f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name AS mpa_name
+FROM films f
+LEFT JOIN mpa m ON f.mpa_id = m.id
+LEFT JOIN film_director fd ON f.id = fd.film_id
+LEFT JOIN directors d ON fd.director_id = d.id
+LEFT JOIN film_likes fl ON f.id = fl.film_id
+WHERE LOWER(d.name) LIKE '%нол%' OR LOWER(f.name) LIKE '%нол%'
+GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name
+ORDER BY COUNT(DISTINCT fl.user_id) DESC, f.id;
+```
+
+Друзья пользователя с id = 1 — те, кого он добавил:
+
+```sql
+SELECT u.id, u.email, u.login, u.name, u.birthday
+FROM users u
+JOIN friendship f ON u.id = f.friend_id
+WHERE f.user_id = 1
+ORDER BY u.id;
+```
+
+Общие друзья пользователей с id = 1 и id = 2:
+
+```sql
+SELECT u.id, u.email, u.login, u.name, u.birthday
+FROM users u
+JOIN friendship f1 ON u.id = f1.friend_id AND f1.user_id = 1
+JOIN friendship f2 ON u.id = f2.friend_id AND f2.user_id = 2
+ORDER BY u.id;
+```
+
+Рекомендации для пользователя с id = 1: фильмы всех пользователей
+с максимальным пересечением по лайкам, которых нет у нашего:
+
+```sql
+-- Шаг 1: максимальное пересечение лайков с любым другим пользователем
+SELECT MAX(common) AS max_common FROM (
+    SELECT COUNT(*) AS common FROM film_likes fl1
+    JOIN film_likes fl2 ON fl1.film_id = fl2.film_id
+    WHERE fl1.user_id = 1 AND fl2.user_id <> 1
+    GROUP BY fl2.user_id
+) t;
+
+-- Шаг 2: все пользователи, у которых пересечение равно максимуму
+SELECT fl2.user_id AS other_id FROM film_likes fl1
+JOIN film_likes fl2 ON fl1.film_id = fl2.film_id
+WHERE fl1.user_id = 1 AND fl2.user_id <> 1
+GROUP BY fl2.user_id
+HAVING COUNT(*) = <max_common>;
+
+-- Шаг 3: их фильмы, которых нет у пользователя 1
+SELECT f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name AS mpa_name
+FROM films f
+JOIN film_likes fl ON f.id = fl.film_id
+LEFT JOIN mpa m ON f.mpa_id = m.id
+WHERE fl.user_id IN (<similar_user_ids>)
+  AND f.id NOT IN (SELECT film_id FROM film_likes WHERE user_id = 1)
+GROUP BY f.id, f.name, f.description, f.release_date, f.duration, f.mpa_id, m.name
+ORDER BY f.id;
+```
 
 </details>

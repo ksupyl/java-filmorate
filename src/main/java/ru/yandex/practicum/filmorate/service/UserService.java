@@ -4,22 +4,35 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
+import ru.yandex.practicum.filmorate.model.Event;
+import ru.yandex.practicum.filmorate.model.EventType;
+import ru.yandex.practicum.filmorate.model.Film;
+import ru.yandex.practicum.filmorate.model.Operation;
 import ru.yandex.practicum.filmorate.model.User;
+import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
 import java.util.Collection;
+import java.util.List;
 
 @Service
 @Slf4j
 public class UserService {
 
     private final UserStorage userStorage;
+    private final FilmStorage filmStorage;
+    private final FeedService feedService;
 
     @Autowired
-    public UserService(@Qualifier("userDbStorage") UserStorage userStorage) {
+    public UserService(@Qualifier("userDbStorage") UserStorage userStorage,
+                       @Qualifier("filmDbStorage") FilmStorage filmStorage,
+                       FeedService feedService) {
         this.userStorage = userStorage;
+        this.filmStorage = filmStorage;
+        this.feedService = feedService;
     }
 
     private void validateDifferentUsers(long userId, long otherId) {
@@ -36,7 +49,9 @@ public class UserService {
                 .orElseThrow(() -> new NotFoundException("Пользователь с id=" + id + " не найден"));
     }
 
-    // Дружба односторонняя: обратная запись для friendId не создаётся
+    // Дружба односторонняя: обратная запись для friendId не создаётся.
+    // Дружба и событие в ленте пишутся вместе: либо оба, либо ни одного
+    @Transactional
     public User addFriend(long userId, long friendId) {
         validateDifferentUsers(userId, friendId);
 
@@ -44,10 +59,12 @@ public class UserService {
         getUserOrThrow(friendId); // проверка существования друга — иначе 404
 
         userStorage.addFriend(userId, friendId);
+        feedService.addEvent(userId, EventType.FRIEND, Operation.ADD, friendId);
         log.debug("Пользователь id={} добавил в друзья id={}", userId, friendId);
         return user;
     }
 
+    @Transactional
     public User removeFriend(long userId, long friendId) {
         validateDifferentUsers(userId, friendId);
 
@@ -55,6 +72,7 @@ public class UserService {
         getUserOrThrow(friendId); // проверка существования друга — иначе 404
 
         userStorage.removeFriend(userId, friendId);
+        feedService.addEvent(userId, EventType.FRIEND, Operation.REMOVE, friendId);
         log.debug("Пользователь id={} удалил из друзей id={}", userId, friendId);
         return user;
     }
@@ -70,6 +88,11 @@ public class UserService {
         getUserOrThrow(userId);
         getUserOrThrow(otherId);
         return userStorage.findCommonFriends(userId, otherId);
+    }
+
+    public List<Event> getFeed(long userId) {
+        getUserOrThrow(userId);
+        return feedService.findByUserId(userId);
     }
 
     // Логин не может содержать пробелы
@@ -95,11 +118,20 @@ public class UserService {
     }
 
     public User update(User user) {
+        if (user.getId() == null) {
+            throw new ValidationException("Не указан id пользователя");
+        }
         getUserOrThrow(user.getId());
 
         validateLogin(user);
         applyDefaultName(user);
         return userStorage.update(user);
+    }
+
+    // Дружбу, лайки и прочие связи пользователя база удаляет сама — каскадом из schema.sql
+    public void delete(long id) {
+        userStorage.delete(id); // нет пользователя — хранилище бросит NotFoundException, это 404
+        log.debug("Пользователь id={} удалён", id);
     }
 
     public Collection<User> findAll() {
@@ -108,5 +140,10 @@ public class UserService {
 
     public User findById(long id) {
         return getUserOrThrow(id);
+    }
+
+    public Collection<Film> getRecommendations(long userId) {
+        getUserOrThrow(userId);
+        return filmStorage.findRecommendations(userId);
     }
 }
